@@ -50,6 +50,10 @@ What you saw in the terminal:
 Then:
 - **`.claude/agents/tutor.md`** was written (model sonnet; tools Read, Grep, Glob, Bash, Edit, Write, WebFetch, WebSearch). It's a definition; it runs nothing by itself.
 - **`CLAUDE.md`** got the handoff rule (see section 1). It's auto-loaded into every session in this project, so all sessions follow it. It's an instruction, not a guarantee. A **hook** (shell command in settings.json) is the enforced mechanism, but can't judge "was this new to Roman?".
+- **"next / continue" rule** *(added 2026-10-02)*. CLAUDE.md has a section, "next / continue: how every main session works", so Roman doesn't have to know what to ask:
+  - **Start:** when a session starts, or he says "next" or "continue", the session reads `BUILD_PLAN.md`, finds the first step not marked `[x]`, and runs `git status` and `git log`. It gives a 3-line recap (where we are, what this step builds, why it matters), then teaches the step in small pieces with Roman typing the code.
+  - **Finish:** run the step's "Done when" check, mark it `[x] date`, update the decision log in PROJECT_CONTEXT.md, have Roman make the commit, run the tutor handoff popup, then propose the next step. Plan changes go under "Changes to the plan" in BUILD_PLAN.md.
+  - **Idea:** this is files as shared memory (section 3) applied to the build itself: the plan's state lives in a file, not in any one chat, so a fresh session continues where the last stopped.
 - **`learning/notes/`** and **`learning/INDEX.md`** were created.
 - **Why this note was written by a general-purpose agent:** agent definitions are read at session start, so the already-running session didn't know the new `tutor` type. It spawned a general-purpose agent with `model: sonnet` and told it to follow `tutor.md`. After a restart, `tutor` is a real type.
 - Optional `/output-style learning` changes how the *main* session talks (leaves `TODO(human)` bits for you, adds "Insight" blocks). It can't set the model.
@@ -84,7 +88,7 @@ Misconceptions to drop: a subagent is not a smaller chat window you can talk to;
 ## 4. Related tools
 
 - **Built-in agent types** (general-purpose, Explore, Plan, claude-code-guide): ready-made workers; custom agents are for a repeatable role with its own prompt.
-- **Skills** and **slash commands**: reusable instructions loaded into the *same* context, not a separate worker.
+- **Skills** and **slash commands**: reusable instructions loaded into the *same* context, not a separate worker (see the [skills and Wayfinder note](2026-10-02-claude-code-skills-and-wayfinder.md)).
 - **Hooks:** deterministic shell commands on events; use when a rule must be enforced.
 - **Output styles:** change tone/format of the main session only.
 - **`claude --agent <name>`** (or `"agent"` in settings.json): makes the whole session run as that agent. We don't use it; the tutor is spawned by main sessions only.
@@ -110,6 +114,7 @@ Misconceptions to drop: a subagent is not a smaller chat window you can talk to;
 6. Why is the tutor forbidden from writing project code?
 7. A message to a subagent arrives after it finished. What happens, and how does that differ from a new Agent call or a fork? *(added 2026-10-01)*
 8. Why doesn't the main session send corrections to a running tutor, and what does it do instead? *(added 2026-10-02)*
+9. A new main session starts and Roman types only "next". How does it know what to do, and what does it do when the step is finished? *(added 2026-10-02)*
 
 <details>
 <summary>Answers</summary>
@@ -122,6 +127,7 @@ Misconceptions to drop: a subagent is not a smaller chat window you can talk to;
 6. You learn by building with the main session; the tutor's only job is explaining, so you understand each piece you wrote.
 7. It resumes from its transcript with its full earlier context. A new Agent call starts blank (re-send the facts); a fork copies the parent's conversation, not the subagent's.
 8. The message may arrive after the tutor finished and be missed. So everything goes in the first prompt; later items are sent by resuming the finished tutor, one tutor at a time.
+9. It reads `BUILD_PLAN.md` (CLAUDE.md tells it to), takes the first step not marked `[x]`, checks git, and recaps in 3 lines. On finishing: run "Done when", mark `[x] date`, log decisions, Roman commits, tutor handoff popup, propose the next step.
 
 </details>
 

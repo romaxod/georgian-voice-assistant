@@ -4,7 +4,7 @@
 
 | # | Item | Type | Status |
 |---|---|---|---|
-| 1 | LLM API key | To do (you) | ☐ |
+| 1 | LLM API key (paid OpenAI or Anthropic) | To do (you) | ☐ |
 | 2 | Azure Speech key | To do (you) | ☐ |
 | 3 | pyenv and virtual environments | Learning | ☐ Choose how to learn it |
 
@@ -18,32 +18,36 @@
 
 ChatGPT Plus, Claude Pro, and Gemini app subscriptions cover the chat apps only. Code calls the **API**, which has a separate account and separate billing. ([OpenAI help](https://help.openai.com/en/articles/8264644-chatgpt-plus), [Claude credits explained](https://www.ssdnodes.com/learn/claude-usage-credits-explained))
 
-### Options
+### Decision (2026-10-02): paid API, $5–10 budget
 
-| Option | Cost | Card needed | Notes |
-|---|---|---|---|
-| **Google Gemini API, free tier** (via AI Studio) | $0 | No | Includes Flash and Flash-Lite models only. Rate limits are low; one source reports about 10 requests/min for 2.5 Flash. That's fine while building, but a 25-case eval run may need pauses. Free-tier prompts may be used by Google to improve its products, so use fictional data only. ([limits overview](https://tinkerllm.com/blog/gemini-api-free-tier-limits-rate-quotas/), [April 2026 changes](https://agentdeals.dev/gemini-api-pricing-changes)) |
-| OpenAI API | $5 minimum prepaid | Yes | Credits expire after a year. ([source](https://www.getmagical.com/blog/how-to-buy-openai-credits)) |
-| Anthropic (Claude) API | $5 minimum prepaid | Yes | Billed in the Claude Console, separately from Claude Pro. |
+Roman chose a paid OpenAI or Anthropic API over the Gemini free tier. Both need a **$5 minimum prepaid** purchase with a card, and both can cap spending.
 
-**Recommendation:** start with the **Gemini free tier**. It costs nothing, needs no card, and is enough to build with. If Georgian answer quality is poor or rate limits block evaluation, add $5 on OpenAI or Anthropic. We'll call the model through LangChain's model interface, so switching providers should take only a few lines. That's also a useful design point.
+| | OpenAI | Anthropic (Claude) |
+|---|---|---|
+| Cheap model for building | `gpt-5.4-mini`: $0.75 in / $4.50 out per 1M tokens ([pricing summary](https://morphllm.com/openai-api-pricing); check the official page when you sign up) | `claude-haiku-4-5`: $1 in / $5 out per 1M tokens |
+| Stronger model to compare in evals | larger GPT models | `claude-sonnet-5-5`: $2 in / $10 out per 1M tokens |
+| Also sells speech (STT/TTS)? | **Yes.** A possible fallback if Azure's Georgian is poor (Georgian quality untested) | No |
+| LangChain/LangGraph support | `langchain-openai` | `langchain-anthropic` |
 
-### Steps (Gemini)
+**Rough cost for this project:** about 500 model calls at ~2,000 input + 300 output tokens each comes to roughly **$1.50–2 on a cheap model** and about $3.50 on Sonnet 5.5. $5 is enough, and $10 leaves room to compare two models during evaluation.
 
-1. Go to <https://aistudio.google.com> and sign in with a personal Google account (not a work one).
-2. Click **Get API key**, then **Create API key**. Let it create a new Google Cloud project if it asks.
-3. In the project folder, create a file named `.env` containing:
-   ```
-   GOOGLE_API_KEY=paste-your-key-here
-   ```
-4. Run `git status` and confirm `.env` is **not** listed. If it shows up, stop and check `.gitignore`.
-5. In AI Studio, check which models and rate limits your key shows. Note them here: ____________
+**Recommendation: OpenAI.** The prices are similar, but OpenAI also sells speech-to-text and text-to-speech. If Azure's Georgian speech disappoints in step 1.5, you'd have a backup without another account. (I'm Claude, so weigh that; Anthropic would work equally well for the text side.) If you have money left on day 3, adding $5 on the other provider and comparing both on your eval set makes a strong story.
 
-### Steps (if you add a paid provider)
+### Steps
 
-- **OpenAI:** <https://platform.openai.com>, then Settings → Billing → add $5. Set a **monthly budget limit**, create a key under API keys, and add `OPENAI_API_KEY=...` to `.env`.
-- **Anthropic:** <https://platform.claude.com>, then Settings → Billing → add $5, then API keys → create a key. Add `ANTHROPIC_API_KEY=...` to `.env`.
+**OpenAI**
+1. Go to <https://platform.openai.com> and sign in with a **personal** account (not a work one).
+2. Settings → Billing: add a card and buy $5. Set a **monthly budget limit** (e.g. $10).
+3. API keys → create a key, and copy it once.
 
+**Anthropic**
+1. Go to <https://platform.claude.com> and sign in with a **personal** account.
+2. Settings → Billing: buy $5, and set a spend limit if offered.
+3. API keys → create a key.
+
+**Then, for either one:**
+4. In the project folder, create `.env` with **one** line, `OPENAI_API_KEY=...` or `ANTHROPIC_API_KEY=...`.
+5. Run `git status` and confirm `.env` is **not** listed.
 ---
 
 ## 2. Azure Speech key (to do)

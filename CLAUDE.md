@@ -2,6 +2,16 @@
 
 Roman is building this side project to learn LangGraph, MCP, STT/TTS and LLM evaluation. Read `PROJECT_CONTEXT.md` (why, plan, learning rules, decision log) and `SETUP.md` (accounts, keys, environments) before substantial work. The scope guardrails in PROJECT_CONTEXT.md apply to every session.
 
+## "next" / "continue": how every main session works
+
+`BUILD_PLAN.md` is the source of truth for what to do next. Roman shouldn't have to know what to ask.
+
+- **When a session starts, or he says "next" or "continue"** (or gives no specific task): read BUILD_PLAN.md, find the first step that isn't `[x]`, and run `git status` / `git log --oneline -5`. Then tell him in 3 lines: where we are, what this step builds, and why it matters for the project and the job. Start teaching it.
+- **Teach it in small pieces:** why first; he types the code (show a few lines at a time and wait for his result); he traces it; he breaks it; you explain. Follow the learning loop in PROJECT_CONTEXT.md.
+- **Finishing a step:** actually run its "Done when" check. Mark it `[x] YYYY-MM-DD`, record any decisions in PROJECT_CONTEXT.md's decision log, have him write and make the commit, run the tutor handoff below, then propose the next step.
+- **If a step is too big or wrong:** split or edit it in BUILD_PLAN.md and add a line under "Changes to the plan". Don't silently skip steps.
+- If he asks for something off-plan, do it, then point him back to the current step.
+
 ## Tutor handoff (main sessions)
 
 Roman wants to understand everything done in this repo, including the tooling around it. The `tutor` agent writes short learning notes in `learning/notes/`, each describing what to learn, how, and from which sources. Notes are listed in `learning/INDEX.md`.
