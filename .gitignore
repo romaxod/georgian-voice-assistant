@@ -1,0 +1,11 @@
+# Secrets: API keys live here, never in git
+.env
+
+# Python virtual environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Recorded audio and eval run outputs (can be large or personal)
+audio/
+runs/
