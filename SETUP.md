@@ -137,12 +137,22 @@ WSLg's audio bridge is running (`PULSE_SERVER=unix:/mnt/wslg/PulseServer`), so t
 | C. Read primary docs | The most accurate source | About 1 hr |
 | D. Video | Seeing someone else do it before trying | 15–30 min, then do the exercises anyway |
 
-Reading list for C:
-- Python tutorial on venvs: <https://docs.python.org/3/tutorial/venv.html>
-- How venvs work (reference): <https://docs.python.org/3/library/venv.html>
-- Packaging guide, pip + venv: <https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/>
-- pyenv README, "How It Works": <https://github.com/pyenv/pyenv#how-it-works>
-- Real Python, "Python Virtual Environments: A Primer": <https://realpython.com/python-virtual-environments-a-primer/>
-- Real Python, "Managing Multiple Python Versions With pyenv": <https://realpython.com/intro-to-pyenv/>
+**A. Prompt to paste into a main session in this repo:**
+> Walk me through SETUP.md section 3 (pyenv and virtual environments). Do the 7 hands-on exercises one at a time: run each command, show me the output, and ask me to explain it before moving on. Then quiz me on the self-check questions.
 
-For D, search YouTube for "Corey Schafer venv" and "pyenv tutorial". Whatever you watch, finish with the exercises and the self-check.
+**B. Tool:** NotebookLM (load the C links as sources) or any chat AI. Prompt to paste:
+> I'm a CS student. Using only these sources, teach me how pyenv shims pick a Python version and how `python -m venv` isolates packages, then give me a 5-question quiz with answers. Sources: https://docs.python.org/3/tutorial/venv.html, https://docs.python.org/3/library/venv.html, https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/, https://github.com/pyenv/pyenv#how-it-works, https://realpython.com/python-virtual-environments-a-primer/, https://realpython.com/intro-to-pyenv/
+
+**C. Reading list (what to read in each):**
+- Python tutorial on venvs: <https://docs.python.org/3/tutorial/venv.html>. Start here; creating, activating and freezing an environment.
+- How venvs work (reference): <https://docs.python.org/3/library/venv.html>. What `pyvenv.cfg` and the activate scripts do.
+- Packaging guide, pip + venv: <https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/>. The recommended workflow and `python -m pip`.
+- pyenv README, "How It Works": <https://github.com/pyenv/pyenv#how-it-works>. Shims and how the version is chosen.
+- Real Python, "Python Virtual Environments: A Primer": <https://realpython.com/python-virtual-environments-a-primer/>. The "why" with examples.
+- Real Python, "Managing Multiple Python Versions With pyenv": <https://realpython.com/intro-to-pyenv/>. Install, global/local/shell versions.
+
+**D. Video** (confirmed by search on 2026-10-02):
+- "Python Tutorial: VENV (Mac & Linux) - How to Use Virtual Environments with the Built-In venv Module", Corey Schafer: <https://www.youtube.com/watch?v=Kg1Yvry_Ydk> (matches WSL).
+- I couldn't verify a specific pyenv video; search YouTube for "pyenv tutorial".
+
+Whatever you choose, finish with the exercises and the self-check.
