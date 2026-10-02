@@ -10,12 +10,12 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 
 ## Phase 0: Setup
 
-- [ ] **0.1 Accounts and keys** *(Roman, no code)*
+- [x] 2026-10-02 **0.1 Accounts and keys** *(Roman, no code)*
   - Do: buy $5 of API credit at the chosen LLM provider and **set a monthly spend limit**; create the Azure Speech F0 resource ([SETUP.md](SETUP.md) §1–2); put the keys in `.env`.
   - Learn: API keys vs. subscriptions, why secrets never go in git.
   - Done when: `.env` has both keys, and `git status` doesn't list `.env`.
 
-- [ ] **0.2 Python project environment**
+- [x] 2026-10-02 **0.2 Python project environment**
   - Do: create `.venv` on Python 3.14, install the provider SDK and `python-dotenv`, write `requirements.txt`, and load the key from `.env` in a tiny script.
   - Learn: venv, `python -m pip`, `requirements.txt`, environment variables ([SETUP.md](SETUP.md) §3).
   - Done when: `python check_env.py` prints "key loaded" without printing the key itself.

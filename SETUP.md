@@ -4,8 +4,8 @@
 
 | # | Item | Type | Status |
 |---|---|---|---|
-| 1 | LLM API key (paid OpenAI or Anthropic) | To do (you) | ☐ |
-| 2 | Azure Speech key | To do (you) | ☐ |
+| 1 | LLM API key (paid OpenAI or Anthropic) | Done 2026-10-02 (OpenAI, monthly limit set) | ☑ |
+| 2 | Azure Speech key | Done 2026-10-02 (F0, italynorth) | ☑ |
 | 3 | pyenv and virtual environments | Learning | ☐ Choose how to learn it |
 | 4 | ElevenLabs (optional, for your own voice) | To do (you), **not yet**: only at step 2.6 | ☐ |
 

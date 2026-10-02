@@ -175,3 +175,75 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** learning/notes/2026-10-02-agentic-architectures.md §2 (diagram); built in BUILD_PLAN 2.1–2.2.
 - **How to explain it:** "I chose the least autonomous design that solves the task, and added guardrails where a customer-service assistant needs them."
 - **Decided by:** Claude (unconfirmed). Confirm or change it at step 2.1.
+
+### 2026-10-02 · Keep the repo on `/mnt/c` for now, move to `~` only if problems repeat `[tooling]`
+- **Decision:** The repo stays at `/mnt/c/prog/ABSTR ASSN/georgian-voice-assistant`, on the Windows drive. Moving it into the Linux filesystem (`~`) is optional and only worth doing if the same problems come back.
+- **Why:** The `python -m venv .venv` failure was most likely a stale working directory. Windows-side deletion or renaming is the probable cause, but the tutor note says that is unverified. The `.venv` was created fine after `cd` back into the folder. Microsoft's guidance is to keep projects for Linux tools in `~`, but the note treats a move as optional. No other reason was stated.
+- **Alternatives:** Move the repo to `~` (Microsoft's recommended setup for Linux tools). It was not chosen now because the failure had a cheaper fix, `cd` again. The `/mnt/c` quirks are documented in `learning/notes/2026-10-02-wsl-filesystems.md`, which includes a short how-to for moving.
+- **How:** No change was made. The venv sits at `/mnt/c/prog/ABSTR ASSN/georgian-voice-assistant/.venv` (Python 3.14.0 from pyenv). Roman should quote the path in commands because it contains a space.
+- **How to explain it:** "I kept the project on the Windows-mounted drive because the failure was a stale shell directory and not a filesystem problem, and I know the exit route, which is moving it into WSL's native filesystem, if the quirks come back."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Bigger chunks per step: whole step in one message, one break test `[process]`
+- **Decision:** Each build step is delivered as one numbered message with all commands and code, short whys, and one request for all output at the end. This replaces 3-4 commands per turn with a wait after each.
+- **Why:** Roman said "we need to get our speeds up a little" after several small-batch turns and a tutor detour with no code written yet. The time budget is a 3-4 day weekend build.
+- **Alternatives:** Keep drip-feeding with guesses before each chunk. Not kept because it was too slow.
+- **How:** Memory file `pace-bigger-chunks.md`, indexed in `MEMORY.md`. The step 0.2 reply follows it (why, steps, break test, commit).
+- **How to explain it:** "I noticed the step-by-step pacing was too slow for a weekend build, so I changed the workflow to batch each step while still typing the code and breaking it myself."
+- **Decided by:** together
+
+### 2026-10-02 · `requirements.txt` generated with `pip freeze` `[tooling]`
+- **Decision:** Pin dependencies by running `python -m pip freeze > requirements.txt` after installing `openai` and `python-dotenv`, instead of hand-writing the list.
+- **Why:** It records the exact installed versions, including transitive dependencies, so anyone can recreate the identical environment with `pip install -r requirements.txt`.
+- **Alternatives:** Hand-written requirements list. Not chosen because it doesn't capture exact versions or dependencies.
+- **How:** `requirements.txt` in the repo root, committed with `check_env.py`.
+- **How to explain it:** "I froze the environment so the install is reproducible down to the transitive dependencies."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Use `python -m pip` inside the activated venv `[tooling]`
+- **Decision:** Install packages with `python -m pip install ...` after `source .venv/bin/activate`, and check `which python` before and after activation.
+- **Why:** `python -m pip` runs pip as part of that exact Python, so packages can't land in the wrong interpreter. A plain `pip` could belong to a different Python.
+- **Alternatives:** Plain `pip install`. Not used because of the wrong-interpreter risk.
+- **How:** The commands in step 0.2. The `which python` check should show `.venv/bin/python`.
+- **How to explain it:** "I call pip through the interpreter so I know which environment I'm installing into."
+- **Decided by:** together
+
+### 2026-10-02 · `check_env.py` prints key lengths, never values `[code]`
+- **Decision:** `check_env.py` loads `.env` with `load_dotenv()` and checks `OPENAI_API_KEY`, `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`. It prints "key loaded (N chars)" or "MISSING", never the value itself.
+- **Why:** The output can be pasted into the chat safely without leaking secrets, and it still confirms each variable is set.
+- **Alternatives:** none discussed
+- **How:** `check_env.py` in the repo root, using `python-dotenv` and `os.getenv`. A deliberate break test runs it after `deactivate`.
+- **How to explain it:** "I wrote the env check so it never prints secrets, which makes it safe to share logs while debugging."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · OpenAI Responses API with `gpt-5.4-mini` for the first LLM call `[provider]`
+- **Decision:** Use OpenAI's Responses API (`client.responses.create`) with model `gpt-5.4-mini` ($0.75 in / $4.50 out per 1M tokens) in `first_call.py`.
+- **Why:** Responses is OpenAI's recommended API for new projects, and the installed SDK (openai 3.23.0) was checked to have it. The model's price was verified in the pricing note. Why this model over others: not stated.
+- **Alternatives:** Chat Completions API (older, so not chosen). No other models discussed.
+- **How:** `first_call.py` with `MODEL = "gpt-5.4-mini"`, `PRICE_IN = 0.75`, `PRICE_OUT = 4.50`, `instructions=` as system prompt, `response.output_text` for the answer.
+- **How to explain it:** I used OpenAI's recommended Responses API, confirmed the SDK supported it, and priced the cheap `gpt-5.4-mini` model from the official pricing page.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Catch specific OpenAI SDK errors and exit with a one-line message `[code]`
+- **Decision:** Wrap the call in `try/except` for `AuthenticationError`, `RateLimitError` and `APIConnectionError`, each calling `sys.exit("Error: ...")` with a readable message. Other errors, such as a bad model name, are left as raw tracebacks on purpose, as a break-test exercise.
+- **Why:** A customer-facing assistant should fail with a clear message, not a raw traceback.
+- **Alternatives:** A bare traceback, or a catch-all `except`. The catch-all was not discussed. Roman is asked how to catch the bad-model error too.
+- **How:** `first_call.py`, the `except` blocks around `client.responses.create`.
+- **How to explain it:** I catch the specific SDK exceptions and turn them into one clear line, so the user never sees a raw stack trace.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Pricing constants and cost printed per call `[code]`
+- **Decision:** Hardcode `PRICE_IN` and `PRICE_OUT` and print token counts and USD cost after each response, computed from `response.usage`.
+- **Why:** Not stated beyond showing "the answer, the token count and the cost". It fits the paid-API budget decision.
+- **Alternatives:** none discussed.
+- **How:** `first_call.py`, the `cost = usage.input_tokens / 1_000_000 * PRICE_IN + ...` line, with a comment noting the prices were checked on 2026-10-02.
+- **How to explain it:** I track the cost of every call from the usage object, so spend is visible from the first request.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Tutor notes for dotenv, dependencies, gh accounts and Responses API, with depth chosen per topic `[process]`
+- **Decision:** Batch 2 of tutor notes covers environment variables and dotenv (short), dependencies and pinning (short), `gh` with two accounts (short), and the OpenAI Responses API (full). They are written in the background by the tutor agent.
+- **Why:** Roman picked these topics from the options offered. Reasons for the depth levels: not stated.
+- **Alternatives:** Other offered topics were not selected. The options were not fully visible in the excerpt.
+- **How:** `AskUserQuestion`, then `SendMessage` to the tutor agent. Notes go into `learning/notes/` and `learning/INDEX.md`.
+- **How to explain it:** I choose which new concepts get written up, and how deeply, so the notes match what I actually need to learn.
+- **Decided by:** Roman
