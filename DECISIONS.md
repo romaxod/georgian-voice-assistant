@@ -135,3 +135,43 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** first line of `.claude/hooks/log-decisions.sh`. `decision_logger.py` launches the child with `env={..., "DECISION_LOGGER_CHILD": "1"}` and `--settings '{"disableAllHooks": true}'` from a temp directory. *(corrected by hand 2026-10-02)*
 - **How to explain it:** "A hook that launches Claude can trigger itself, so I added an explicit env-var guard to prevent infinite recursion."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Giorgi as the default Azure voice `[provider]`
+- **Decision:** use `ka-GE-GiorgiNeural` as the default TTS voice.
+- **Why:** in Roman's Speech Studio test he rated Giorgi 3.5–4/5 and Eka 3/5. Neither mispronounced anything, but Giorgi sounded more natural.
+- **Alternatives:** `ka-GE-EkaNeural`; an ElevenLabs voice (planned comparison in BUILD_PLAN 2.6a).
+- **How:** SETUP.md §2 test results; this becomes the voice name in the TTS config.
+- **How to explain it:** "I picked the voice from a listening test, and planned a blind comparison against alternatives."
+- **Decided by:** Roman (ratings), Claude (default)
+
+### 2026-10-02 · Real-time recognition, and send eval audio one clip at a time `[process]`
+- **Decision:** use real-time STT, not fast or batch transcription, and run voice evals sequentially.
+- **Why:** on the Azure F0 tier, fast/batch transcription show "Not applicable", and real-time STT allows only 1 concurrent request (verified in Azure quota docs 2026-10-02).
+- **Alternatives:** fast transcription (Georgian supports it, but not on F0); a paid S0 tier.
+- **How:** SETUP.md §2 F0 limits; BUILD_PLAN 3.4 "one at a time".
+- **How to explain it:** "I designed the eval runner around the free tier's concurrency limit instead of hitting 429s."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Two depths of tutor notes: full and short `[process]`
+- **Decision:** the tutor writes **full** notes (7 sections, ways to learn including videos and courses) for anything important to Roman's growth, even outside this project's scope, and **short** explanation-only notes for small or peripheral things. The handoff popup labels each option, and Roman can override it.
+- **Why:** Roman said he won't watch videos for small things, but wants the full treatment for important topics.
+- **Alternatives:** always full; never suggest videos.
+- **How:** `.claude/agents/tutor.md` "Two depths"; CLAUDE.md handoff rule.
+- **How to explain it:** n/a (personal learning workflow)
+- **Decided by:** Roman
+
+### 2026-10-02 · Async hook fixes: drop the useless timeout, log skipped runs `[code]`
+- **Decision:** removed `"timeout": 300` from the Stop hook in `.claude/settings.json`, and `decision_logger.py` now writes `skip: disabled` to `runs.log` when the off switch is on.
+- **Why:** the tutor found in the hooks docs that async hooks ignore `timeout` (the real limit is the 280 s `subprocess.run` timeout), and that a disabled run previously left no trace, so you couldn't tell it was off.
+- **Alternatives:** keep the timeout as documentation (misleading); keep silent skips.
+- **How:** `.claude/settings.json`; `log_run("skip: disabled")` in `main()`. Tested: `runs.log` showed `skip: disabled`.
+- **How to explain it:** "A reviewer, here an AI tutor reading the docs, caught a config that looked protective but did nothing."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-02 · Planned agent design: routing + bounded tool loop + human handoff `[architecture]`
+- **Decision:** the LangGraph graph will route each turn (answer, look up, clarify, hand off), run a tool loop with a step limit, and end in a handoff node when the assistant is unsure or the user asks for an action it can't take.
+- **Why:** this is the simplest pattern that covers the plan (BUILD_PLAN 2.1–2.2), Anthropic's "Building effective agents" recommends starting with simple workflows, and a customer-service assistant should keep autonomy low (OWASP excessive agency). Multi-agent adds cost and failure modes with no benefit at this size.
+- **Alternatives:** a fully autonomous agent loop; multi-agent supervisor; plan-and-execute.
+- **How:** learning/notes/2026-10-02-agentic-architectures.md §2 (diagram); built in BUILD_PLAN 2.1–2.2.
+- **How to explain it:** "I chose the least autonomous design that solves the task, and added guardrails where a customer-service assistant needs them."
+- **Decided by:** Claude (unconfirmed). Confirm or change it at step 2.1.
