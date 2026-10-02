@@ -247,3 +247,11 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `AskUserQuestion`, then `SendMessage` to the tutor agent. Notes go into `learning/notes/` and `learning/INDEX.md`.
 - **How to explain it:** I choose which new concepts get written up, and how deeply, so the notes match what I actually need to learn.
 - **Decided by:** Roman
+
+### 2026-10-03 · Roman types the code himself instead of Claude creating the files `[process]`
+- **Decision:** Claude does not create `first_call.py`. Roman creates it in the project root, next to `check_env.py`, and types the code from step 1.1 part 2 instead of pasting it.
+- **Why:** So Roman can explain every line.
+- **Alternatives:** Claude writing the file, or Roman pasting the code. Both are implied as rejected, and no other reasons are given.
+- **How:** Roman creates the file with `code first_call.py` or `nano first_call.py`. He then runs `python first_call.py` inside the `.venv`, and again with `OPENAI_API_KEY=sk-wrong` to test the error path.
+- **How to explain it:** "I typed all the code myself and read each line as I went, so I can explain every part of it."
+- **Decided by:** Claude (unconfirmed)

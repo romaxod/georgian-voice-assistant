@@ -22,7 +22,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 
 ## Phase 1: Text assistant (day 1)
 
-- [ ] **1.1 First LLM call**
+- [x] 2026-10-03 **1.1 First LLM call**
   - Do: send one Georgian question to the model from Python and print the answer, the token usage, and the estimated cost.
   - Learn: the messages format, system prompts, response objects, SDK exceptions (wrong key, no credit, network error).
   - Done when: it answers in Georgian, and a wrong key gives a clear error message, not a raw traceback.
