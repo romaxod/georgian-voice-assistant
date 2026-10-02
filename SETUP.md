@@ -7,6 +7,7 @@
 | 1 | LLM API key (paid OpenAI or Anthropic) | To do (you) | ☐ |
 | 2 | Azure Speech key | To do (you) | ☐ |
 | 3 | pyenv and virtual environments | Learning | ☐ Choose how to learn it |
+| 4 | ElevenLabs (optional, for your own voice) | To do (you), **not yet**: only at step 2.6 | ☐ |
 
 > **Never paste an API key into a chat, including into Claude.** Keys go only in `.env`, which `.gitignore` keeps out of git. If a key leaks, delete it in the provider's dashboard and create a new one.
 
@@ -160,3 +161,49 @@ WSLg's audio bridge is running (`PULSE_SERVER=unix:/mnt/wslg/PulseServer`), so t
 - I couldn't verify a specific pyenv video; search YouTube for "pyenv tutorial".
 
 Whatever you choose, finish with the exercises and the self-check.
+
+---
+
+## 4. ElevenLabs voice (optional, to do at step 2.6)
+
+**Don't set this up yet.** Wait until the voice loop (BUILD_PLAN step 2.5) works with Azure. Until then, Azure's ready-made voices (Eka/Giorgi) are the assistant's voice.
+
+### Three stages, one change at a time
+
+| Stage | Voice | What it tells you |
+|---|---|---|
+| 1 (steps 1.5, 2.5) | Azure `ka-GE-EkaNeural` / `ka-GE-GiorgiNeural` | The baseline: does the pipeline work at all? |
+| 2 (step 2.6a) | An ElevenLabs **ready-made** voice | Is ElevenLabs' Georgian better than Azure's? |
+| 3 (step 2.6b) | An ElevenLabs **clone of your voice** | Does the clone keep that quality and sound like you? |
+
+Changing one thing per stage means that when something sounds worse, you know which change caused it.
+
+### Facts (checked 2026-10-02)
+
+- Georgian is listed for `eleven_v3`, `eleven_v4` and the low-latency `eleven_v4_turbo`. It is **not** listed for `eleven_multilingual_v2` or `eleven_flash_v2_5`. ([models docs](https://elevenlabs.io/docs/overview/models))
+- Instant Voice Cloning needs the **Starter** plan or higher, about $5–6/month by recent third-party summaries ([summary](https://magichour.ai/blog/elevenlabs-pricing)). Check the price on <https://elevenlabs.io/pricing> when you sign up. Professional cloning ($22+, 30+ minutes of studio audio) is overkill here.
+- ElevenLabs recommends recording the clone **in the language you'll use it in**, so record in Georgian.
+- The free plan may be enough for stage 2 (a ready-made voice). Check whether it includes API access to the Georgian-capable models before paying.
+
+### Steps
+
+**Stage 2: ready-made voice**
+1. Sign up at <https://elevenlabs.io> with a personal account.
+2. In the voice library, pick a voice and try a Georgian sentence with a Georgian-capable model (`eleven_v4` or `eleven_v3`). Use the same test sentence as SETUP.md §2.
+3. Profile → API keys: create a key, then add `ELEVENLABS_API_KEY=...` and `ELEVENLABS_VOICE_ID=<the ready-made voice's ID>` to `.env`.
+
+**Stage 3: your voice**
+4. Upgrade to Starter if the free plan doesn't include cloning.
+5. **Record about 2 minutes** of natural Georgian:
+   - Use a quiet room with no echo, and the same mic and distance throughout.
+   - Speak in the tone the assistant should have: friendly and calm, not reading-aloud stiff.
+   - Avoid background music, other voices, and long silences.
+   - Save it as WAV or high-quality MP3. Keep the file **out of the repo**, since `audio/` is gitignored.
+6. Voices → Add voice → **Instant Voice Clone**: upload the file and confirm you have the right to clone this voice (it's yours).
+7. Copy the new voice ID and change `ELEVENLABS_VOICE_ID` in `.env`. Keep the ready-made voice's ID in a comment, so you can compare the two.
+
+**Rules**
+- Never commit or share the API key or the voice ID. A clone of your voice is a security risk; banks deal with voice-fraud deepfakes.
+- In any demo, say it's a consented clone of your own voice.
+- When the project is done, cancel the subscription and delete the clone if you don't want it kept.
+

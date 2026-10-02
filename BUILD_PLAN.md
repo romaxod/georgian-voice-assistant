@@ -74,6 +74,17 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Learn: microphone capture, a pipeline with timing, where the latency goes.
   - Done when: you ask a question out loud and hear a correct answer, and the terminal shows each stage's time.
 
+- [ ] **2.6a (Optional) ElevenLabs ready-made voice** *(only once 2.5 works)*
+  - Do: set up ElevenLabs ([SETUP.md](SETUP.md) §4, stage 2). Put TTS behind one small interface, so Azure ↔ ElevenLabs is a config switch with Azure as the automatic fallback. Use a model that lists Georgian (`eleven_v4`, `eleven_v3`, or the low-latency `eleven_v4_turbo`), and check the current docs before choosing.
+  - Learn: swappable components (an interface plus a fallback), latency to first audio, and comparing providers fairly.
+  - Done when: a config switch changes the voice; ElevenLabs failing falls back to Azure; and a blind rating of 10 Georgian sentences (pronunciation and naturalness, 1–5) plus time to first audio is recorded, Azure vs. ElevenLabs ready-made.
+
+- [ ] **2.6b (Optional stretch) The assistant speaks in Roman's voice** *(limit 2.6a + 2.6b to ~2–3 h in total; never at the expense of Phase 3)*
+  - Do: record about 2 min of clean Georgian and create an Instant Voice Clone ([SETUP.md](SETUP.md) §4, stage 3). Swap the voice ID; the code doesn't change.
+  - Learn: instant vs. professional cloning, consent requirements, and voice-clone security risks.
+  - Done when: the loop speaks in your voice, and the same 10-sentence blind rating now has three columns (Azure / ready-made / your clone), recorded in the README.
+  - Rules: say in any demo that it's a consented clone of your own voice. Never commit or share the voice ID or API key.
+
 ## Phase 3: Evaluation (day 3)
 
 - [ ] **3.1 Test set**
@@ -110,3 +121,5 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 ## Changes to the plan
 
 If a step turns out wrong or too big, edit this file, split the step, and note why here.
+
+- 2026-10-02: Added optional 2.6a/2.6b (ElevenLabs ready-made voice, then a clone of Roman's voice), so each stage changes one thing. Setup is in SETUP.md §4.
