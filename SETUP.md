@@ -57,25 +57,37 @@ Roman chose a paid OpenAI or Anthropic API over the Gemini free tier. Both need 
 
 Azure documents Georgian (`ka-GE`) support for both speech-to-text and text-to-speech. It has two Georgian neural voices, **`ka-GE-EkaNeural`** (female) and **`ka-GE-GiorgiNeural`** (male). ([language support](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts))
 
-The **free (F0) tier** includes **5 audio hours of STT per month** and **0.5 million characters of neural TTS per month**, which is far more than this project needs. ([pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/speech-services/))
+The **free (F0) tier** includes **5 audio hours of STT per month** and **0.5 million characters of neural TTS per month**, which is far more than this project needs. F0 limits that affect the build (checked 2026-10-02): real-time STT allows **1 concurrent request**, so eval runs must send audio one at a time; real-time TTS allows **20 requests per 60 s**; and **fast/batch transcription show "Not applicable" for F0**, so use real-time recognition. Details: [learning/notes/2026-10-02-azure-basics.md](learning/notes/2026-10-02-azure-basics.md). ([pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/speech-services/))
 
 ### Steps
 
 1. **Sign up for Azure for Students:** <https://azure.microsoft.com/free/students>. Use your **university email** (Free University). You must be 18+ and a student; it gives **$100 of credit with no card** for 12 months. If your university email doesn't verify, a regular free Azure account also works but asks for a card.
-2. Go to <https://portal.azure.com>, choose **Create a resource**, and search for **Speech** (it may be listed under Azure AI services or Foundry).
+2. Go to <https://portal.azure.com>, choose **Create a resource**, and search for **Speech**. Pick the card named **"Speech" by Microsoft**, marked **Azure Service** with a **Create** button. That one resource covers **both STT and TTS** with one key. Don't pick the third-party marketplace cards ("Text-to-Speech API", "Speech-to-Text API", BitFractal, etc.): their **Subscribe** button starts a separate paid contract with another company.
 3. Fill in the form:
    - **Resource group:** create a new one called `voice-assistant`. Deleting the group later removes everything inside it.
-   - **Region:** choose a European region such as **West Europe**, and write it down.
+   - **Region:** **Italy North** (`italynorth`). Roman's Azure for Students subscription only allows `denmarkeast`, `switzerlandnorth`, `polandcentral`, `austriaeast`, and `italynorth` (policy error `RequestDisallowedByAzure` on anything else). Of those, only `italynorth` and `switzerlandnorth` support Speech ([regions](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/regions), checked 2026-10-02). Italy North also has fast transcription, which Georgian supports. To see your own allowed list: Portal → Policy → Assignments → "Allowed resource deployment regions" → Parameters.
    - **Name:** any name, for example `roma-voice-assistant`.
    - **Pricing tier:** **Free F0**. You can have only one F0 Speech resource per subscription.
 4. After the resource is created, open it and go to **Keys and Endpoint**. Add **KEY 1** and the **Location/Region** to `.env`:
    ```
    AZURE_SPEECH_KEY=paste-key-1-here
-   AZURE_SPEECH_REGION=westeurope
+   # must match your resource's region code (Keys and Endpoint)
+   AZURE_SPEECH_REGION=italynorth
    ```
-5. **No-code quality test (do this early):** in the Speech playground (Azure AI Foundry, formerly Speech Studio), have both Georgian voices read a sentence the assistant might actually say. For example: *„თქვენი ბარათის ლიმიტის შესაცვლელად გადადით აპლიკაციის პარამეტრებში.“* Then try live transcription by saying a question in Georgian. Note how it did:
-   - TTS (Eka / Giorgi): ____________
-   - STT accuracy on your voice: ____________
+5. **No-code quality test (do this early):** open **Speech Studio** (<https://aka.ms/speechstudio/>). If asked, select your Azure for Students subscription and the `italynorth` resource. For **TTS**, use **Explore the Voice Gallery**: filter to Georgian (Georgia) and have Eka and Giorgi read a sentence the assistant might say, e.g. *„თქვენი ბარათის ლიმიტის შესაცვლელად გადადით აპლიკაციის პარამეტრებში.“* For **STT**, use **Try out Real-time speech to text**: set the language to Georgian (Georgia), not auto-detect, and record a question. Skip Personal Voice; its API is gated. Note how it did:
+   - TTS (Eka / Giorgi), tested 2026-10-02: **Eka 3/5, Giorgi 3.5–4/5.** No mispronunciations; both sound understandable but not natural. → Giorgi is the default voice for now, and ElevenLabs (step 2.6) is worth trying.
+   - STT accuracy on your voice, tested 2026-10-02: **mostly correct** for ordinary words; rarer or less common words get misrecognized. Not yet tested: Georgian sentences with English tech words mixed in (see the code-switching note below).
+
+### Code-switching: Georgian with English words mixed in (checked 2026-10-02)
+
+Georgian speakers, especially developers, mix in English words ("API-ს key როგორ შევცვალო?"). This is called **code-switching**, and Azure's support for it is weak:
+
+- **STT:** Azure's language identification **can't switch languages mid-sentence**. English words in a Georgian sentence are decoded as Georgian ([language identification docs](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-identification)). **Phrase lists** (biasing toward specific words) aren't shown as enabled for `ka-GE`; confirm with the Phrase list toggle in Speech Studio ([language support](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt)).
+- **TTS:** nothing is documented about Eka/Giorgi reading English words, and Azure's multilingual voices don't list Georgian. Untested. Possible workarounds: SSML `<sub alias="…">` with a Georgian-script spelling, or rewriting English terms into Georgian script before TTS.
+- **Alternatives to test:**
+  - ElevenLabs **Scribe v2** puts Georgian in its "High Accuracy" tier (5–10% WER) and supports **keyterm prompting** (50 terms in realtime, 1,000 in batch) ([docs](https://elevenlabs.io/docs/capabilities/speech-to-text)). It's the same account as step 2.6.
+  - OpenAI `gpt-transcribe` takes `languages`, `keywords`, and `prompt` hints ([docs](https://developers.openai.com/api/docs/guides/speech-to-text)), but Georgian isn't explicitly confirmed there.
+  - None of the three documents mid-sentence code-switching, so **measure it** (BUILD_PLAN 1.5, 3.1, 3.4).
 
 ---
 

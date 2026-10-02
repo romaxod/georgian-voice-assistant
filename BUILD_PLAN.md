@@ -45,7 +45,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 - [ ] **1.5 Georgian speech smoke test** *(the riskiest part, so it comes early)*
   - Do: transcribe a recorded Georgian `.wav` with Azure STT, synthesize a Georgian reply to a file with TTS, and play it.
   - Learn: audio formats (sample rate, wav), Azure Speech SDK basics, WSL audio.
-  - Done when: you hear Eka or Giorgi speak a reply, and the transcript of your own recording is mostly right. Note the quality in SETUP.md §2.
+  - Done when: you hear Eka or Giorgi speak a reply, and the transcript of your own recording is mostly right. Also record **3 code-switched sentences** (Georgian with English tech words, e.g. "API-ს key როგორ შევცვალო?"), and have TTS read one reply that contains an English word. Note what happens in SETUP.md §2 (code-switching).
 
 ## Phase 2: Agentic architecture and voice (day 2)
 
@@ -70,7 +70,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Done when: 2.1–2.2 behavior is unchanged, and killing the server gives a graceful error.
 
 - [ ] **2.5 Push-to-talk voice loop**
-  - Do: press Enter to record, then STT → graph → TTS → playback. Show the transcript, tool call, and time per stage in the terminal.
+  - Do: press Enter to record, then STT → graph → TTS → playback. Show the transcript, tool call, and time per stage in the terminal. Add a small **speech-text** step before TTS that makes the answer speakable, e.g. turning English terms into Georgian-script spellings or SSML `<sub>`, if 1.5 showed TTS mangles them. Keep the on-screen text unchanged.
   - Learn: microphone capture, a pipeline with timing, where the latency goes.
   - Done when: you ask a question out loud and hear a correct answer, and the terminal shows each stage's time.
 
@@ -78,6 +78,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Do: set up ElevenLabs ([SETUP.md](SETUP.md) §4, stage 2). Put TTS behind one small interface, so Azure ↔ ElevenLabs is a config switch with Azure as the automatic fallback. Use a model that lists Georgian (`eleven_v4`, `eleven_v3`, or the low-latency `eleven_v4_turbo`), and check the current docs before choosing.
   - Learn: swappable components (an interface plus a fallback), latency to first audio, and comparing providers fairly.
   - Done when: a config switch changes the voice; ElevenLabs failing falls back to Azure; and a blind rating of 10 Georgian sentences (pronunciation and naturalness, 1–5) plus time to first audio is recorded, Azure vs. ElevenLabs ready-made.
+  - Also, if 1.5 showed Azure STT struggling with English words: try ElevenLabs **Scribe v2** with **keyterms** ("API", "LangGraph", "MCP", ...) on the same code-switched recordings. STT goes behind the same kind of swappable interface.
 
 - [ ] **2.6b (Optional stretch) The assistant speaks in Roman's voice** *(limit 2.6a + 2.6b to ~2–3 h in total; never at the expense of Phase 3)*
   - Do: record about 2 min of clean Georgian and create an Instant Voice Clone ([SETUP.md](SETUP.md) §4, stage 3). Swap the voice ID; the code doesn't change.
@@ -88,7 +89,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 ## Phase 3: Evaluation (day 3)
 
 - [ ] **3.1 Test set**
-  - Do: write 20–25 text cases as data (JSON or YAML): ordinary questions, ambiguous ones, missing information, multi-turn, tool failures, and false-action claims. Each case has its expected behavior.
+  - Do: write 20–25 text cases as data (JSON or YAML): ordinary questions, ambiguous ones, missing information, multi-turn, tool failures, false-action claims, and **code-switched** questions (Georgian with English words). Each case has its expected behavior.
   - Learn: what makes a good eval case, behavior vs. exact wording.
   - Done when: the file covers every category, with at least 3 cases each.
 
@@ -103,7 +104,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Done when: a before/after table is in the README, and the story of the fix is written down. This becomes the story for the demo.
 
 - [ ] **3.4 Voice check**
-  - Do: record 5 spoken versions of test cases, run them end to end, and compare the transcripts and answers with the text results.
+  - Do: record 5 spoken versions of test cases (at least 2 code-switched), run them end to end **one at a time** (Azure F0 allows 1 concurrent STT request), and compare the transcripts and answers with the text results. If you tried Scribe v2 in 2.6a, compare both STT providers on the same recordings.
   - Learn: how STT errors propagate through the pipeline.
   - Done when: a small results table exists, with one observed STT failure explained (or a note that none occurred).
 
@@ -123,3 +124,4 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
 If a step turns out wrong or too big, edit this file, split the step, and note why here.
 
 - 2026-10-02: Added optional 2.6a/2.6b (ElevenLabs ready-made voice, then a clone of Roman's voice), so each stage changes one thing. Setup is in SETUP.md §4.
+- 2026-10-02: Added code-switching (Georgian + English words) checks to 1.5, 2.5, 2.6a, 3.1, and 3.4 after finding that Azure STT can't switch languages mid-sentence and has no phrase lists for ka-GE.
