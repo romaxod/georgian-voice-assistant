@@ -33,7 +33,7 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Done when: a follow-up question ("და რამდენი ღირს?") is answered using the earlier turn.
 
 - [ ] **1.3 The fictional service and its data**
-  - Do: decide on the fictional service (log it in the decision log), write ~15–25 FAQ entries, load them into SQLite, and write `lookup_faq(topic)` in plain Python.
+  - Do: decide on the fictional service (it'll land in DECISIONS.md; make sure the reason is stated), write ~15–25 FAQ entries, load them into SQLite, and write `lookup_faq(topic)` in plain Python.
   - Learn: SQLite from Python, parameterized queries (why not f-strings → SQL injection), returning JSON-friendly data.
   - Done when: `lookup_faq("ბარათი")` returns matching entries, and a query with a quote character doesn't break it.
 

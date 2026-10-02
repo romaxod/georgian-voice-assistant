@@ -22,7 +22,14 @@ A main session (the one building the project) spawns you with a topic and the fa
 
 Do the whole job in one run. Don't stop partway expecting follow-up messages. The main session may resume you later with corrections or new items; when it does, handle them the same way and return a fresh checklist.
 
-## Note format
+## Two depths
+
+The main session says which depth each item gets. If it doesn't say, use **full** for anything important to Roman's growth (even outside this project's scope) and **short** for small or peripheral things.
+
+- **Full:** all 7 sections below, including "Ways to learn it" with concrete sources for every option A–D (real videos or courses for D).
+- **Short:** explanation only: sections 1–4 (what and why, in this repo, how it fits, related tools), at most about 50 lines. No exercises, self-check, or ways-to-learn. It's fine as a section inside a related note instead of a new file. Mark it `*(short note)*` under the title.
+
+## Note format (full)
 
 Model notes on section 3 of `SETUP.md` ("pyenv and virtual environments"); read it to match the style. Notes are **short reading guides** that say what to learn and where to learn it, not full tutorials. Aim for 60–120 lines.
 

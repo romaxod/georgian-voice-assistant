@@ -1,6 +1,6 @@
 # georgian-voice-assistant
 
-Roman is building this side project to learn LangGraph, MCP, STT/TTS and LLM evaluation. Read `PROJECT_CONTEXT.md` (why, plan, learning rules, decision log) and `SETUP.md` (accounts, keys, environments) before substantial work. The scope guardrails in PROJECT_CONTEXT.md apply to every session.
+Roman is building this side project to learn LangGraph, MCP, STT/TTS and LLM evaluation. Read `PROJECT_CONTEXT.md` (why, plan, learning rules) and `SETUP.md` (accounts, keys, environments) before substantial work. The scope guardrails in PROJECT_CONTEXT.md apply to every session.
 
 ## "next" / "continue": how every main session works
 
@@ -8,7 +8,7 @@ Roman is building this side project to learn LangGraph, MCP, STT/TTS and LLM eva
 
 - **When a session starts, or he says "next" or "continue"** (or gives no specific task): read BUILD_PLAN.md, find the first step that isn't `[x]`, and run `git status` / `git log --oneline -5`. Then tell him in 3 lines: where we are, what this step builds, and why it matters for the project and the job. Start teaching it.
 - **Teach it in small pieces:** why first; he types the code (show a few lines at a time and wait for his result); he traces it; he breaks it; you explain. Follow the learning loop in PROJECT_CONTEXT.md.
-- **Finishing a step:** actually run its "Done when" check. Mark it `[x] YYYY-MM-DD`, record any decisions in PROJECT_CONTEXT.md's decision log, have him write and make the commit, run the tutor handoff below, then propose the next step.
+- **Finishing a step:** actually run its "Done when" check. Mark it `[x] YYYY-MM-DD`, have him write and make the commit, run the tutor handoff below, then propose the next step.
 - **If a step is too big or wrong:** split or edit it in BUILD_PLAN.md and add a line under "Changes to the plan". Don't silently skip steps.
 - If he asks for something off-plan, do it, then point him back to the current step.
 
@@ -20,7 +20,7 @@ Roman wants to understand everything done in this repo, including the tooling ar
 
 - First check `learning/INDEX.md` and the relevant notes. **Leave out anything already explained.**
 - If something is **partly** explained, offer it as an addition to that note, e.g. "Add to *subagents* note: resuming a finished subagent".
-- Give each option a one-line description of what the note would cover. Ask at most 4 options per question; group related items together.
+- Give each option a one-line description of what the note would cover, and label its depth: **(full)** for anything important to Roman's growth (even outside this project's scope), with exercises and ways to learn including videos and courses; **(short)** for small or peripheral things, explanation only. He can override the depth in the popup. Ask at most 4 options per question; group related items together.
 - If nothing new came up, don't ask.
 
 **When he picks items, hand them off immediately and automatically.** He shouldn't have to do anything else.
@@ -38,4 +38,4 @@ If you are the tutor, ignore this section.
 - Never ask for or accept API keys in chat. They go only in `.env` (gitignored).
 - `gh` on this machine has more than one account; `private/CONTEXT.md` says which one this repo uses. Confirm it's active (`gh auth status`) before any push. This repo's git identity is set locally, never globally.
 - No real company's code, data, prompts or branding; the service and its data are fictional. Personal details stay in `private/`.
-- Record real decisions in the decision log in PROJECT_CONTEXT.md.
+- Decisions are logged automatically to `DECISIONS.md` by the Stop hook (`decision-logger` agent). State the reason for a choice explicitly in your reply, so the logger can capture it. If you see a wrong entry, fix it. If you are the headless decision logger, ignore this file.

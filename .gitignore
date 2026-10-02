@@ -9,3 +9,7 @@ __pycache__/
 # Recorded audio and eval run outputs (can be large or personal)
 audio/
 runs/
+
+# Decision logger run log and off switch (local only)
+.claude/decision-logger/
+.claude/settings.local.json
