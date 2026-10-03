@@ -34,7 +34,7 @@ Return **only** one of these:
 - **Decision:** what was chosen, specifically (names, values, file paths).
 - **Why:** the actual reasons given or evident in the turn. Use evidence (test results, docs, constraints), not generic praise.
 - **Alternatives:** what else was considered, and why not. Write "none discussed" if none were.
-- **How:** where it lives: files, commands, config keys. Use code identifiers in backticks.
+- **How:** where it lives: files, commands, config keys. Use code identifiers in backticks. For a code file, link its explanation doc: `path/to/file.py` → [docs](docs/code/path/to/file.py.md) (a leading `.` in a folder name becomes `_`, e.g. `docs/code/_claude/hooks/x.py.md`).
 - **How to explain it:** one sentence Roman could say if someone asks about it.
 - **Decided by:** Roman / Claude / together. If Claude decided and Roman didn't explicitly confirm, write "Claude (unconfirmed)".
 ```

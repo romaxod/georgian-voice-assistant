@@ -42,6 +42,22 @@ Three separate guards against recursion: the env var, `disableAllHooks` in the c
 
 Two caveats seen here. (a) The hook was written mid-session. The docs say the file watcher "normally picks up hook changes automatically", and `/hooks` shows what is loaded; if a new session shows no log lines after a turn, open `/hooks` or restart. (b) A skipped run writes `skip: disabled` to `runs.log` when the off switch is on. *(Updated 2026-10-02: it used to leave no line.)* (c) This session was started in the parent `ABSTR ASSN` folder, so it loaded that folder's settings, not the repo's. The hook only runs in sessions started **inside** `georgian-voice-assistant/`.
 
+### Code docs hook *(added 2026-10-03)*
+
+A second async `Stop` hook writes `docs/code/<path>.md`, a line-by-line explanation of each code file. It is registered **in the same `Stop` entry** as the decision logger in `.claude/settings.json`; hooks in one entry run in parallel, and both are `async: true`, so the session waits for neither. Files: `.claude/hooks/document-code.sh` (wrapper) -> `.claude/hooks/code_docs.py` (worker) -> instructions in `.claude/agents/code-documenter.md` (frontmatter stripped with a regex, the same pattern as the decision logger).
+
+What `code_docs.py` does (read 2026-10-03):
+1. `document-code.sh` exits if `DECISION_LOGGER_CHILD=1` (same recursion guard), discards stdin (the hook JSON isn't needed), and `exec`s `python3 code_docs.py`.
+2. `main()` exits if `.claude/code-docs/disabled` exists (`skip: disabled` in `runs.log`).
+3. It takes `fcntl.flock(LOCK_EX)` on `.claude/code-docs/lock`. This **blocks**, so an overlapping turn waits, and then finds nothing stale because the first run already did the work.
+4. `code_files()` runs `git ls-files --cached --others --exclude-standard`: tracked files plus untracked files that aren't gitignored. `.env` and `.venv` are ignored, so they never appear. Then it filters by extension (`.py .sh .sql .json .yaml .yml .toml .js .ts`) and skips `docs/` and `learning/`.
+5. **Staleness by content hash.** Each doc's header comment stores `sha256` of the source it was written from. A file is re-documented only if its current sha256 differs (or no doc exists). This is the same idea as build caches (make, Docker layers, Bazel): compare a fingerprint of the input, not timestamps, so edits by Claude, by you, or a `git checkout` are all noticed and an unchanged file costs nothing.
+6. Docs whose source no longer exists are deleted (only files with the generated header, so hand-written docs are safe).
+7. Up to 3 stale files are documented in parallel with `concurrent.futures.ThreadPoolExecutor(max_workers=3)`, each a headless `claude -p --model sonnet --tools "" --settings '{"disableAllHooks": true}' --no-session-persistence` call from a temp dir. Threads are fine here: the work is waiting on subprocesses, not computing in Python.
+8. The doc path: leading `.` in a folder name becomes `_` (`.claude/hooks/x.py` -> `docs/code/_claude/hooks/x.py.md`) so it isn't hidden. Then `write_index()` rebuilds `docs/code/README.md`, and one line goes to `.claude/code-docs/runs.log` (`ok <file>`, `error <file>: ...`, `removed ...`, or `ok: nothing changed`). The whole `main()` is wrapped so an exception only writes a log line.
+
+Control: off switch `touch .claude/code-docs/disabled` (remove it to resume). Manual run: `python3 .claude/hooks/code_docs.py`. Cost: one Sonnet call per changed file per turn, up to 3 at once, against your subscription usage; the prompt includes the source (capped at 60,000 characters), the previous doc, DECISIONS.md titles and the notes index.
+
 ## 3. How the pieces fit together
 
 ```

@@ -13,3 +13,6 @@ runs/
 # Decision logger run log and off switch (local only)
 .claude/decision-logger/
 .claude/settings.local.json
+
+# Code-docs hook run log, lock and off switch (local only)
+.claude/code-docs/

@@ -1,10 +1,10 @@
 # Build plan
 
-The ordered list of steps for building this project. Any main session reads this file, finds the **first unchecked step**, and teaches it. So when Roman types **"next"** (or "continue"), work picks up from here. Each step should take about 30–90 minutes.
+The ordered list of steps for building this project. Any main session reads this file, finds the **first unchecked step**, and implements it. So when Roman types **"next"** (or "continue"), work picks up from here.
 
 Status: `[ ]` not started · `[~]` in progress · `[x]` done (with date)
 
-Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman types the code → trace it → break it → log decisions → commit.
+Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implements the whole step and runs its "Done when" check and a break test → code docs, decisions and tutor notes are written automatically → Roman reads them and runs the git commit himself. "Learn" lines below are what the docs and tutor notes for that step should cover.
 
 ---
 
@@ -27,13 +27,13 @@ Every step follows the learning loop in PROJECT_CONTEXT.md: why first → Roman 
   - Learn: the messages format, system prompts, response objects, SDK exceptions (wrong key, no credit, network error).
   - Done when: it answers in Georgian, and a wrong key gives a clear error message, not a raw traceback.
 
-- [ ] **1.2 Terminal chat with memory**
+- [x] 2026-10-03 **1.2 Terminal chat with memory** *(`chat.py`; fictional service: ჯიხვი, a mobile operator)*
   - Do: build a loop where you type, it answers, and the conversation history is kept between turns. Give it a system prompt for the fictional service.
   - Learn: why the model is stateless and *you* resend history; lists of dicts; the system prompt.
   - Done when: a follow-up question ("და რამდენი ღირს?") is answered using the earlier turn.
 
 - [ ] **1.3 The fictional service and its data**
-  - Do: decide on the fictional service (it'll land in DECISIONS.md; make sure the reason is stated), write ~15–25 FAQ entries, load them into SQLite, and write `lookup_faq(topic)` in plain Python.
+  - Do: (service already chosen in 1.2: ჯიხვი, a fictional mobile operator) write ~15–25 FAQ entries, starting from the facts in `chat.py`'s system prompt, load them into SQLite, and write `lookup_faq(topic)` in plain Python.
   - Learn: SQLite from Python, parameterized queries (why not f-strings → SQL injection), returning JSON-friendly data.
   - Done when: `lookup_faq("ბარათი")` returns matching entries, and a query with a quote character doesn't break it.
 
@@ -125,3 +125,5 @@ If a step turns out wrong or too big, edit this file, split the step, and note w
 
 - 2026-10-02: Added optional 2.6a/2.6b (ElevenLabs ready-made voice, then a clone of Roman's voice), so each stage changes one thing. Setup is in SETUP.md §4.
 - 2026-10-02: Added code-switching (Georgian + English words) checks to 1.5, 2.5, 2.6a, 3.1, and 3.4 after finding that Azure STT can't switch languages mid-sentence and has no phrase lists for ka-GE.
+- 2026-10-03: Switched from Roman typing the code to Claude implementing each whole step. Roman learns from auto-generated code docs (`docs/code/`), DECISIONS.md and tutor notes instead, and still runs git himself. Reason: typing a few lines per turn and answering quiz questions was too slow for a 3–4 day build.
+- 2026-10-03: The fictional service is chosen in 1.2 instead of 1.3, because 1.2's system prompt and its "და რამდენი ღირს?" check need a service with prices. 1.3 moves those facts into SQLite.

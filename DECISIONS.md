@@ -4,6 +4,8 @@ Every decision in this project, from provider choices down to small code details
 
 **How it's written:** a Stop hook runs the `decision-logger` agent after every main-session turn and appends new entries here automatically (`.claude/hooks/log-decisions.sh`). Entries are append-only and newest last. If an entry is wrong, fix it by hand or add a `reversal` entry. To pause logging, run `touch .claude/decision-logger/disabled`.
 
+**Code docs:** this file says *why*; [docs/code/](docs/code/README.md) says *what every part of the code does*. A second Stop hook (`.claude/hooks/document-code.sh`, `code-documenter` agent) rewrites `docs/code/<path>.md` whenever a code file's content changes, explaining it block by block with a traced run and its failure modes. Entries below link to those docs in **How**. To pause it, run `touch .claude/code-docs/disabled`.
+
 Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope` · `reversal`
 
 ---
@@ -254,4 +256,68 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **Alternatives:** Claude writing the file, or Roman pasting the code. Both are implied as rejected, and no other reasons are given.
 - **How:** Roman creates the file with `code first_call.py` or `nano first_call.py`. He then runs `python first_call.py` inside the `.venv`, and again with `OPENAI_API_KEY=sk-wrong` to test the error path.
 - **How to explain it:** "I typed all the code myself and read each line as I went, so I can explain every part of it."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Claude implements whole steps; Roman reads instead of typing and quizzes `[reversal]`
+- **Decision:** From now on Claude writes the code, runs the step's "Done when" check and one break test, and shows the real output. It does this for the whole `BUILD_PLAN.md` step in one turn. Roman learns by reading the code docs, `DECISIONS.md` and the tutor notes. There are no quiz questions and no drip-fed code. Claude asks only about choices that are genuinely Roman's (money, scope). Otherwise it picks, states the reason and moves on. Roman still runs every git command himself.
+- **Why:** Roman said the previous workflow was too slow and full of questions he found pointless. He intends to read the tutor's material anyway, so quizzing him adds nothing. It's a weekend-build pace (the memory note says 3–4 days).
+- **Alternatives:** The two earlier workflows: Roman typing the code himself, and one message per step with a single break test. Both are replaced. Not discussed further.
+- **How:** `CLAUDE.md` section "next / continue: how every main session works", the "How we work" section in `PROJECT_CONTEXT.md`, `BUILD_PLAN.md`, and the memory note `pace-bigger-chunks.md`. Replaces "Roman types the code himself instead of Claude creating the files" and "Bigger chunks per step".
+- **How to explain it:** I changed my workflow when it was too slow. Claude builds and tests each step, and I learn from generated docs, decision logs and tutor notes, so I still understand every part.
+- **Decided by:** Roman
+
+### 2026-10-03 · Auto-generated code docs via a second Stop hook and a `code-documenter` agent `[tooling]`
+- **Decision:** A second async Stop hook, `document-code.sh`, runs `code_docs.py`. It has the `code-documenter` agent (Sonnet, tools Read/Grep/Glob/Write) write `docs/code/<path>.md` for each code file whose content changed. Each doc covers every block of the file, how it fits, a traced run and what can go wrong. Hidden folders map to `_` (e.g. `docs/code/_claude/...`). `DECISIONS.md` entries now link these docs in **How**, and the decision-logger prompt was updated to match. `touch .claude/code-docs/disabled` pauses the hook.
+- **Why:** Roman asked for documentation of each thing and for every part of the implemented code to be explained. The docs are his reading material now that Claude writes the code.
+- **Alternatives:** none discussed.
+- **How:** `.claude/hooks/document-code.sh`, `.claude/hooks/code_docs.py` → [docs](docs/code/_claude/hooks/code_docs.py.md), `.claude/agents/code-documenter.md`, `.claude/settings.json` (second Stop hook entry, `async: true`), `.gitignore` (`.claude/code-docs/`), and the `DECISIONS.md` header.
+- **How to explain it:** Because the AI writes the code, I made the repo document itself with a hook, so there is always a block-by-block explanation I can study and defend.
+- **Decided by:** Roman asked for the docs; Claude chose the mechanism (unconfirmed)
+
+### 2026-10-03 · Re-document a file only when its sha256 changes `[code]`
+- **Decision:** Each doc stores the sha256 of the source it was written from, in a header comment. `code_docs.py` regenerates a doc only when the hash differs. The file list comes from `git ls-files --cached --others --exclude-standard`, filtered by extension (`.py`, `.sh`, `.sql`, `.json`, `.yaml`, `.yml`, `.toml`, `.js`, `.ts`). `docs/` and `learning/` are skipped. Source sent to the model is capped at `MAX_SOURCE = 60_000` characters, and runs are parallelised with `ThreadPoolExecutor`.
+- **Why:** Docs are regenerated whether Claude, Roman or a git checkout changed a file. Using git's ignore rules keeps `.env` and `.venv` out. The other values (parallelism, the 60k cap) have no stated reason.
+- **Alternatives:** none discussed.
+- **How:** `.claude/hooks/code_docs.py` → [docs](docs/code/_claude/hooks/code_docs.py.md) (`HEADER` regex, `code_files()`, `documented_hash()`).
+- **How to explain it:** I key regeneration on a content hash, so it works no matter who edits a file and never repeats work.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Tutor is spawned automatically, with no popup for picking topics `[reversal]`
+- **Decision:** The main session spawns the tutor agent in the background itself after a step. It checks `learning/INDEX.md` to skip topics already covered. It no longer shows an AskUserQuestion popup to pick items. The tutor teaches concepts and sources rather than repeating the line-by-line walkthrough that now lives in `docs/code/`.
+- **Why:** Roman wants Claude to just implement and not ask him questions. The line-by-line explanation is now covered by the code docs. Otherwise not stated.
+- **Alternatives:** The earlier popup handoff, which is replaced.
+- **How:** `CLAUDE.md` rules and the memory note `pace-bigger-chunks.md`. The Agent call "Tutor notes for step 1.2" in this turn is the first use. Replaces "Tutor agent that writes notes only, handed off by popup".
+- **How to explain it:** I removed the manual handoff so learning material is produced as part of every step.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Fictional operator "ჯიხვი" (Jikhvi), with the facts inside the system prompt for now `[scope]`
+- **Decision:** The fictional service is ჯიხვი, a Georgian mobile operator. Its plans, roaming, eSIM, SIM blocking, top-up and branch hours sit in `SYSTEM_PROMPT` for now. Step 1.3 moves them into SQLite behind `lookup_faq()`, and 1.4 turns that into a tool. The 1.3 FAQ will start from these facts.
+- **Why:** Facts in the prompt get step 1.2 working and testable before the database exists. Why a mobile operator specifically is not stated.
+- **Alternatives:** none discussed.
+- **How:** `chat.py` → [docs](docs/code/chat.py.md) (`SYSTEM_PROMPT`), `BUILD_PLAN.md` step 1.3 text.
+- **How to explain it:** I started with the facts inline so the chat loop worked first, then planned to move them behind a lookup tool.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · System prompt rules: Georgian only, 1–3 sentences, facts only, no claimed actions `[code]`
+- **Decision:** `SYSTEM_PROMPT` tells the model to always answer in Georgian, in 1–3 short sentences, and only from the listed facts. If the answer isn't there, it says it doesn't know and offers a human operator. It must never claim to have performed actions (blocking a SIM, changing a plan, payments) and should explain how the customer can do them.
+- **Why:** The short answers will later be read aloud. The don't-know rule and the human offer set up the planned handoff. The no-actions rule stops the model claiming it did something it can't do.
+- **Alternatives:** none discussed.
+- **How:** `chat.py` → [docs](docs/code/chat.py.md), `SYSTEM_PROMPT`, passed as `instructions=`.
+- **How to explain it:** I wrote the prompt for voice output and to stop hallucinated actions, with an explicit fallback to a human.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Chat memory: resend a local `history` list each call, with `store=False` `[architecture]`
+- **Decision:** `chat.py` keeps `history`, a list of `{"role", "content"}` dicts, and sends all of it as `input=` on every `client.responses.create(model="gpt-5.4-mini", ...)` call. It uses `store=False`. `/reset` calls `history.clear()`.
+- **Why:** The app owns the conversation state, so OpenAI doesn't need to store responses.
+- **Alternatives:** none discussed.
+- **How:** `chat.py` → [docs](docs/code/chat.py.md), `main()`.
+- **How to explain it:** I keep conversation state client-side so I control what the model sees, and I can reset or trim it.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `--no-memory` flag as the break test, plus error handling that keeps history consistent `[code]`
+- **Decision:** `python chat.py --no-memory` sends only `history[-1:]`, so the follow-up "და რამდენი ღირს?" loses its context. The status line shows `sent` messages rather than the history length. On `RateLimitError`, `APIConnectionError` or `APIStatusError`, the loop calls `history.pop()` and continues, so history stays in user/assistant pairs. `AuthenticationError` exits with a one-line message.
+- **Why:** The no-memory run demonstrates what memory does. The two runs printed "1 messages sent", which showed the first status line was misleading, so Claude changed it. Run with a deliberately wrong key, the script printed "Error: the API key was rejected…" before exiting. The `pop()` reason is Claude's own; it was passed to the tutor as an explanation.
+- **Alternatives:** none discussed.
+- **How:** `chat.py` → [docs](docs/code/chat.py.md) (`argparse`, `sent`, exception handlers).
+- **How to explain it:** I built a flag that turns memory off, so I could show that follow-ups depend on the history being resent.
 - **Decided by:** Claude (unconfirmed)
