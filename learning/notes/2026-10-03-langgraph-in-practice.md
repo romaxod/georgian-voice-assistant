@@ -56,7 +56,17 @@ input -> [reducers merge it into State] -> node runs -> returns partial update -
           ^ stream() lets you watch each step; get_state / update_state read and edit the saved copy
 ```
 
-Sets up **2.2**: a `clarify` node and a `handoff` node are just new nodes and new targets in `route_after_understand`; a loop plus `recursion_limit` gives the step limit; `interrupt()` pauses for a human. **2.4**: MCP tools replace the body of `lookup`; the graph around it stays.
+Sets up **2.2**: a `clarify` node and a `handoff` node are just new nodes and new targets in `route_after_understand`; a loop plus `recursion_limit` gives the step limit; `interrupt()` pauses for a human. **2.4**: MCP replaces the body of `lookup`; the graph around it stays, but it becomes async (section 3b).
+
+## 3b. Async graphs (step 2.4) *(added 2026-10-03)* *(short note)*
+
+Checked in the installed `langgraph` 1.2.12 source and `graph.py`. Async basics are in the [async note](2026-10-03-python-async-await.md).
+
+- **Async twins of the API:** `ainvoke`, `astream`, `aget_state`, `aupdate_state` (and `aget_state_history`). Same arguments and results as the sync versions; you `await` them (`async for update in graph.astream(..., stream_mode="updates")`). Use them whenever any node must `await` something; here the `lookup` node awaits the MCP call.
+- **Mixed graphs are fine.** `lookup` is `async def`; `clarify`, `check`, `handoff` stay plain `def`. When the graph runs async, LangGraph wraps a sync node with `run_in_executor` (`langgraph/_internal/_runnable.py`), so it runs in a thread pool and doesn't block the event loop. The reverse isn't true: a graph with `async def` nodes run with sync `invoke` raises `TypeError: No synchronous function provided to "n". ... invoke via the async API (ainvoke, astream, etc.)` (tested).
+- **Each node runs in its own asyncio task.** Usually invisible, but it matters when a node touches something tied to the task that created it. The MCP SDK's anyio task group must be exited by the task that entered it, so the `lookup` node cannot restart the server; it only sets `faq.broken = True` and the chat loop reconnects between turns.
+- **Dependency injection became async.** `build_graph(lookup_fn, ...)` takes `LookupFn = Callable[[str], Awaitable[list[dict]]]` and has **no default** anymore: a lookup now needs a live MCP connection, so the caller passes `faq.lookup`. `--draw` passes a no-op `async def no_lookup(topic): return []`, because drawing never calls nodes. `failing_lookup(...)` (the 2.2 error simulator) is async too.
+- Not changed: state, reducers, checkpointer (`InMemorySaver` works the same), edges, `recursion_limit`.
 
 ## 4. Related tools
 

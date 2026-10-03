@@ -39,12 +39,12 @@ Date: 2026-10-03. Checked against the MCP docs and spec (pages opened today, see
 **Python SDK v2 (`mcp` 2.3.0).**
 - Server: `from mcp.server import MCPServer`; `@mcp.tool()` turns function name -> tool `name`, docstring -> `description`, type hints -> `inputSchema`. `Annotated[str, Field(min_length=1, max_length=200)]` becomes `minLength`/`maxLength`, and the SDK validates every call **before** your function runs. A Pydantic return type becomes `outputSchema`; the result is sent as JSON text and as `structuredContent`. `mcp.run()` defaults to stdio.
 - Errors: `ToolError` (import from `mcp.server.mcpserver.exceptions`) = anticipated failure, the message reaches the client, logged at INFO. Any other exception: the client only sees "Error executing tool <name>" and the server logs a traceback. Use it so internal details (paths, SQL) never leak to the model.
-- Client: `from mcp import Client, StdioServerParameters`; `async with Client(StdioServerParameters(command=..., args=[...], cwd=...)) as client:` then `await client.call_tool("lookup_faq", {"topic": "ბარათი"})` returns a `CallToolResult` with `.is_error`, `.content`, `.structured_content`. (`async`/`await` is taught in step 2.4; for now read it as "wait for the subprocess".)
+- Client: `from mcp import Client, StdioServerParameters`; `async with Client(StdioServerParameters(command=..., args=[...], cwd=...)) as client:` then `await client.call_tool("lookup_faq", {"topic": "ბარათი"})` returns a `CallToolResult` with `.is_error`, `.content`, `.structured_content`. (`async`/`await` is explained in the [async note](2026-10-03-python-async-await.md).)
 - **Version gotcha:** most tutorials use `from mcp.server.fastmcp import FastMCP` (v1). In v2 that import raises `ModuleNotFoundError`; the class is now `MCPServer` ([migration guide](https://py.sdk.modelcontextprotocol.io/v2/migration/)). Separately, **FastMCP** (gofastmcp.com, maintained by Prefect, repo `PrefectHQ/fastmcp`, originally by jlowin) is a different, actively maintained package whose early API was folded into the official SDK in 2024. Search results mix the two; check which `import` a tutorial uses.
 
 ## 2. In this repo
 
-`mcp_server.py` wraps `faq.lookup_faq` in one tool. The search logic stays in `faq.py`: one implementation, MCP is only a boundary. `chat.py`/`graph.py` still import `faq.py` directly until 2.4 switches the graph to an MCP client. Real outputs from this step:
+`mcp_server.py` wraps `faq.lookup_faq` in one tool. The search logic stays in `faq.py`: one implementation, MCP is only a boundary. `chat.py` still imports `faq.py` directly; since step 2.4 `graph.py` goes through an MCP client (section 5b). Real outputs from this step:
 - `tools/list` (via Inspector CLI): `inputSchema.properties.topic` = `{"type":"string","minLength":1,"maxLength":200,...}`, `required:["topic"]`; `outputSchema` `LookupResult` with `$defs.FaqEntry`; `annotations` `readOnlyHint/idempotentHint: true`, `openWorldHint: false`.
 - `tools/call` with `topic=ბარათი`: `isError:false`, `structuredContent` with 3 entries (sim-lost, sim-replace, balance-topup), `content` = one text block; stderr: `[faq-server] lookup_faq('ბარათი') -> 3 result(s)`.
 - Break tests:
@@ -75,7 +75,7 @@ user -> host (graph.py, 2.4) --LLM--> decides to call lookup_faq
 
 - **Plain function calling (1.4):** simplest for one app; MCP pays off when tools are shared across apps or owned by another team.
 - **FastMCP (Prefect):** third-party framework with extras (proxying, auth, testing); we use the official SDK to stay close to the spec.
-- **LangChain/LangGraph adapters** (`langchain-mcp-adapters`) turn MCP tools into LangChain tools; relevant in 2.4, not verified here.
+- **LangChain/LangGraph adapters** (`langchain-mcp-adapters`: `MultiServerMCPClient`, `load_mcp_tools`) turn MCP tools into LangChain tools. Not used, see section 5b.
 - **OpenAPI/REST:** also describes tools, but has no discovery-by-model, annotations or stdio story.
 
 ## 5. Inspector
@@ -85,6 +85,63 @@ user -> host (graph.py, 2.4) --LLM--> decides to call lookup_faq
 - **`--cli` mode:** same, headless: `--method tools/list`, `--method tools/call --tool-name lookup_faq --tool-arg topic=ბარათი`, `--method initialize` (connect-only probe). If the server has its own flags, put `--` between target and Inspector options (smoke-testing doc).
 - **Quirks seen here:** `--tool-arg "topic="` fails ("Invalid parameter format... Use key=value format."), so the CLI can't send an empty string; an unknown tool fails client-side (`tool_not_found`) before any call; a result with `isError` makes the CLI exit non-zero (`tool_is_error`), handy in scripts. Stderr from the server mixes into your terminal; split it (`2>log`, see the CLI basics note).
 - `--tui` is a third, terminal UI mode.
+
+## 5b. The client side (step 2.4) *(added 2026-10-03)*
+
+Checked by running probes against `faq_client.py` and reading `mcp/client/stdio.py` in the venv. Async basics: [async note](2026-10-03-python-async-await.md). Line-by-line code: `docs/code/faq_client.py.md`.
+
+**Roles made concrete.** `graph.py` is the **host** (owns the LLM and the user). `FaqClient` is the **MCP client** inside it, with one connection to one server (`mcp_server.py`). Unlike the 1.4 picture of "the model picks the tool", here the graph's `lookup` node is a fixed step that always calls `lookup_faq`; MCP is used as a process boundary, not as model-driven tool choice.
+
+**Connection lifecycle.**
+- `Client(StdioServerParameters(command=sys.executable, args=[...]))` entered with `async with` (here through an `AsyncExitStack`) starts the server subprocess and runs the handshake. `sys.executable` makes the server use the venv's Python.
+- **Start once per chat, keep it open** (measured 3.2 to 4.7 s on `/mnt/c`, mostly Python startup and imports; a call takes milliseconds). Starting per call would add seconds to every spoken reply.
+- Handshake: `Client` defaults to `mode="auto"`. After connecting, `client.protocol_version` was `2026-07-28` and `client.server_info` was `name='jikhvi-faq' version='0.1.0'`. My hand-typed bare `server/discover` line still got `-32601`, so the client must send more than that (probably the `_meta` fields); I did not trace it. Use the printed values, not the section-1 assumption, for what 2.3.0's client does.
+- The SDK starts the server with `start_new_session=True`, so a terminal Ctrl-C reaches only `graph.py`, not the server (see [signals note](2026-10-03-unix-processes-and-signals.md)). Shutdown: close stdin, wait, SIGTERM, then SIGKILL after `FORCE_KILL_TIMEOUT = 2.0 s` (`mcp/client/stdio.py`).
+
+**One call and its result.** `await client.call_tool("lookup_faq", {"topic": topic}, read_timeout_seconds=5)`.
+- Pass the timeout **per call**, not to `Client(...)`: a Client-wide 3 to 5 s timeout could also cut the slow first handshake. The startup timeout is a separate `asyncio.timeout(20)`.
+- `CallToolResult` fields are **snake_case** in this SDK: `is_error`, `structured_content`, `content` (list of `TextContent` blocks with `.text`). The wire format says `isError` / `structuredContent`; the Python model converts.
+- A server-side validation error is a normal result with `is_error=True` and text like `Error executing tool lookup_faq: 1 validation error ...`.
+- **Validate before use.** The other process is a trust boundary (it could be a different version or buggy): check `results` is a list of dicts with `"answer"` before the graph reads it.
+
+**Error mapping (measured with probes).** Three different failures look different:
+
+| What I did | What the client saw | Time |
+|---|---|---|
+| `kill -9` the server | `MCPError(-32000, 'Connection closed')` (`mcp.types.CONNECTION_CLOSED`), on this call and every later one | immediate |
+| `kill -STOP` the server (hung) | `MCPError(-32001, "Request 'tools/call' timed out")` (`REQUEST_TIMEOUT`) after exactly the timeout; after `kill -CONT` the same session worked again | 5 s |
+| server file missing / can't start | `ExceptionGroup` (nested) raised by `__aenter__` | 0.04 to 0.18 s |
+| tool raised `ToolError` / bad args | `is_error=True` result | ms |
+
+**Retry policy.** `FaqToolError(message, retryable)`: `retryable=True` **only** for `is_error` (the server is alive and its database may work next time). Timeout, closed connection, not started, and bad shape are `retryable=False`, because calling again on the same dead or hung connection cannot work; those set `faq.broken = True` and the chat loop restarts the server before the next turn. Bug found: the first version marked the timeout retryable *and* the connection broken, so the retry could never succeed; fixed.
+
+**Real break-test output.**
+- `kill -9`: `[lookup] try 1: the connection to the FAQ server closed -> hand off`, then on the next turn `[mcp] restarted the FAQ server (3.4 s)`.
+- `SIGSTOP`: `didn't answer within 5 s -> hand off (5.0 s)`; the restart on the next turn took 7.0 s, because closing a stopped process means: close stdin, wait, SIGTERM (ignored while stopped), SIGKILL after 2 s.
+
+**Alternatives.**
+- **`langchain-mcp-adapters`** (`MultiServerMCPClient`, `load_mcp_tools`): turns MCP tools into LangChain tools so a ReAct agent can pick them. Not used: another dependency, and our lookup is a fixed node. The GitHub README I opened says the repo is archived and support moved into LangChain's own MCP namespace, so check the current package before using it.
+- **Streamable HTTP** instead of stdio: a long-running shared server, no 3 s start per chat, but then you need auth and deployment. For one local user, stdio is simpler.
+
+**Exercises (client side).**
+1. `.venv/bin/python faq_client.py ბარათი`. Check: 3 entries and `connect ~3 s, call a few ms`.
+2. In a scratch script, print `client.protocol_version` and `client.server_info` inside `async with Client(StdioServerParameters(command=sys.executable, args=["mcp_server.py"])) as c:`. Check: `2026-07-28` and `jikhvi-faq`.
+3. Call `call_tool("lookup_faq", {"topic": ""})`. Check: `result.is_error` is `True` and the text mentions a validation error; no exception.
+4. Start `.venv/bin/python graph.py` in one terminal, ask an FAQ question, then in another run `pkill -9 -f "[m]cp_server.py"` (the brackets stop the pattern matching your own shell). Check: that turn hands off with "connection ... closed", the next turn prints the restart line and answers.
+5. Same with `kill -STOP <pid>` (get the pid from `pgrep -af mcp_server.py`). Check: hand-off after 5 s; the restart is slower (about 7 s).
+
+**Self-check (client side).**
+C1. Why start the server once per chat and not per call?
+C2. Why is a timeout not `retryable`, but a server-reported `is_error` is?
+C3. Which exception shape do you get from a server that can't start, and why?
+C4. Why is the tool result validated even though we wrote the server?
+
+<details><summary>Answers (C1-C4)</summary>
+
+C1. Startup is 3 to 5 s (Python imports); a call is milliseconds. C2. After a timeout the connection is hung or dead, so a retry goes to the same silent process; `is_error` means the server answered and may succeed next time. C3. A nested `ExceptionGroup` from the SDK's anyio task group, wrapping `MCPError(-32000, 'Connection closed')`; unwrap to the first real error. C4. It's another process (a trust boundary): versions can drift or a bug can change the shape, and a clear error is better than a `KeyError` deep in the graph.
+</details>
+
+Extra sources for this section (opened 2026-10-03): Python SDK docs, Clients section (transports, multiple servers): https://py.sdk.modelcontextprotocol.io/ ; `langchain-mcp-adapters` README: https://github.com/langchain-ai/langchain-mcp-adapters ; `man 7 signal`: https://man7.org/linux/man-pages/man7/signal.7.html .
 
 ## 6. Hands-on exercises
 

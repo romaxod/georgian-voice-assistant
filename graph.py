@@ -1,4 +1,5 @@
-"""Step 2.2: the ჯიხვი assistant as a LangGraph graph that clarifies, hands off and fails safely.
+"""Step 2.4: the ჯიხვი assistant as a LangGraph graph that clarifies, hands off and fails safely,
+with the FAQ lookup behind the MCP server (mcp_server.py) instead of a Python import.
 
     START → understand ─(faq/action)─→ lookup ─(facts)───→ answer → check ─(ok)────→ END
                       │                ↺ retry once on a DB error         └(problem)─→ handoff → END
@@ -10,8 +11,9 @@
 understand  LLM call with structured output: what kind of message this is (faq, action, ambiguous,
             human, other), search keywords, and a clarifying question if it's ambiguous.
 clarify     no LLM: sends the question understand wrote. A second unclear message in a row hands off.
-lookup      plain Python: runs lookup_faq(topic). A database error is retried once (a cycle in the
-            graph); if it fails again, or nothing is found, the turn hands off.
+lookup      no LLM: calls the lookup_faq tool on the MCP server (faq_client.py). A retryable error
+            (the server reported its database failed) is retried once, a cycle in the graph; if it
+            fails again, the server is gone or hung, or nothing is found, the turn hands off.
 answer      LLM call that drafts the reply from the facts and says whether the facts answered it.
 check       plain Python: sends the draft, unless the facts didn't answer the question or the draft
             claims an action the assistant can't take ("I blocked your SIM").
@@ -21,21 +23,27 @@ handoff     no LLM: a fixed, honest reply for each reason. A real system would a
 Every problem a node finds goes into state["handoff_reason"]; the routers only read it. The fixed
 replies don't depend on the model, so they still work when the model is what failed.
 
+The graph runs async (ainvoke/astream), because the MCP client is async. The chat loop owns the MCP
+connection: it starts the server once, and restarts it before a turn if the last lookup broke it.
+
 Run:  python graph.py                                chat; prints every node; "/reset" = new thread
       python graph.py --simulate-tool-error once     each turn's first FAQ lookup fails, the retry works
       python graph.py --simulate-tool-error always   every FAQ lookup fails (honest hand-off)
+      kill the server mid-chat (pgrep -af mcp_server.py, then kill <pid>): that turn hands off with
+      the "technical problem" reply, and the next turn restarts the server
       python graph.py --max-steps 3                  lower the step limit to see it trigger
       python graph.py --draw                         print the graph as Mermaid (paste into mermaid.live)
 """
 import argparse
+import asyncio
 import json
 import operator
 import re
-import sqlite3
+import signal
 import sys
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Literal, TypedDict
 
 from dotenv import load_dotenv
@@ -48,7 +56,7 @@ from langgraph.graph.message import add_messages
 from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, Field
 
-from faq import lookup_faq
+from faq_client import FaqClient, FaqToolError
 
 MODEL = "gpt-5.4-mini"
 # USD per 1M tokens, from OpenAI's pricing page (checked 2026-10-02)
@@ -173,18 +181,24 @@ def false_action_claim(text: str) -> str | None:
     return match.group(0) if match else None
 
 
-def build_graph(llm: ChatOpenAI | None = None, checkpointer=None,
-                lookup_fn: Callable[[str], list[dict]] = lookup_faq):
+LookupFn = Callable[[str], Awaitable[list[dict]]]  # an async function: topic -> FAQ entries
+
+
+def build_graph(lookup_fn: LookupFn, llm: ChatOpenAI | None = None, checkpointer=None):
     """Wire the nodes into a compiled graph. Nodes are closures, so they share `llm` and `lookup_fn`
-    without globals. `lookup_fn` can be swapped for one that fails, to test the error paths."""
+    without globals. `lookup_fn` is FaqClient.lookup in the chat; it can be swapped for one that
+    fails, to test the error paths. It raises FaqToolError when the lookup fails."""
     llm = llm or ChatOpenAI(model=MODEL)
     # include_raw=True returns the raw AIMessage too, so we still get token usage (and a parse error
     # as data instead of an exception).
     understander = llm.with_structured_output(Understanding, include_raw=True)
     drafter = llm.with_structured_output(Draft, include_raw=True)
 
-    def understand(state: State) -> dict:
-        result = understander.invoke([SystemMessage(UNDERSTAND_PROMPT)] + state["messages"])
+    # Nodes that wait on the network are async: while one waits, the event loop can run other work
+    # (the MCP client's reader task, for one). Plain-Python nodes stay sync; LangGraph runs those in
+    # a thread pool when the graph runs async.
+    async def understand(state: State) -> dict:
+        result = await understander.ainvoke([SystemMessage(UNDERSTAND_PROMPT)] + state["messages"])
         parsed: Understanding | None = result["parsed"]
         if parsed is None:
             # The model's output didn't match the schema. Searching with the raw question is the
@@ -210,23 +224,24 @@ def build_graph(llm: ChatOpenAI | None = None, checkpointer=None,
         question = state["clarifying_question"].strip() or CLARIFY_FALLBACK
         return {"messages": [AIMessage(question)], "clarify_turns": state.get("clarify_turns", 0) + 1}
 
-    def lookup(state: State) -> dict:
+    async def lookup(state: State) -> dict:
         attempts = state.get("lookup_attempts", 0) + 1
         topic = state["topic"].strip()
         if not topic or len(topic) > MAX_TOPIC_CHARS:
             return {"lookup_attempts": attempts, "handoff_reason": "no_facts",
                     "handoff_note": f"unusable search topic ({len(topic)} characters)"}
         try:
-            facts = lookup_fn(topic)
-        except sqlite3.OperationalError as e:
-            # "database is locked", disk I/O: may work a moment later, so retry while attempts remain.
-            error = f"the FAQ database failed: {e}"
-            give_up = attempts >= MAX_LOOKUP_ATTEMPTS
+            facts = await lookup_fn(topic)
+        except FaqToolError as e:
+            # faq_client decides what's worth retrying: the server's database error may pass; a dead
+            # or hung server won't answer a retry (the chat loop restarts it before the next turn).
+            error = str(e)
+            give_up = not e.retryable or attempts >= MAX_LOOKUP_ATTEMPTS
             return {"lookup_attempts": attempts, "lookup_error": error,
                     "handoff_reason": "tool_error" if give_up else None,
                     "handoff_note": error if give_up else None}
         except Exception as e:
-            # Anything else (a corrupt file, a bug): retrying won't help. At the tool boundary every
+            # Anything else is a bug in our code: retrying won't help. At the tool boundary every
             # failure becomes an honest reply; the error type in the note keeps a bug visible.
             error = f"the FAQ lookup failed: {type(e).__name__}: {e}"
             return {"lookup_attempts": attempts, "lookup_error": error, "handoff_reason": "tool_error",
@@ -236,14 +251,14 @@ def build_graph(llm: ChatOpenAI | None = None, checkpointer=None,
                     "handoff_note": f"no FAQ entries for {topic!r}"}
         return {"lookup_attempts": attempts, "lookup_error": None, "facts": facts}
 
-    def answer(state: State) -> dict:
+    async def answer(state: State) -> dict:
         if state["intent"] == "other":
             context = CONTEXT_OTHER
         else:
             # ensure_ascii=False keeps Georgian as letters, not ა escapes (fewer tokens)
             facts = CONTEXT_FACTS.format(facts=json.dumps(state["facts"], ensure_ascii=False, indent=1))
             context = (CONTEXT_ACTION if state["intent"] == "action" else "") + facts
-        result = drafter.invoke([SystemMessage(ANSWER_PROMPT.format(context=context))] + state["messages"])
+        result = await drafter.ainvoke([SystemMessage(ANSWER_PROMPT.format(context=context))] + state["messages"])
         parsed: Draft | None = result["parsed"]
         update = {"cost": cost(result["raw"].usage_metadata)}
         if parsed is None:  # unparseable output: send nothing from it; check hands off
@@ -299,18 +314,19 @@ def build_graph(llm: ChatOpenAI | None = None, checkpointer=None,
     return builder.compile(checkpointer=checkpointer)
 
 
-def failing_lookup(mode: str) -> Callable[[str], list[dict]]:
-    """A lookup_faq stand-in that raises the error a locked database gives.
+def failing_lookup(mode: str, real_lookup: LookupFn) -> LookupFn:
+    """Wraps the real lookup so it raises what faq_client raises when the server's database fails.
     always: every call fails. once: every other call fails, so each turn's first try fails and
     the retry works."""
     calls = 0
 
-    def lookup(topic: str) -> list[dict]:
+    async def lookup(topic: str) -> list[dict]:
         nonlocal calls  # the counter lives in failing_lookup's scope and survives between calls
         calls += 1
         if mode == "always" or calls % 2 == 1:
-            raise sqlite3.OperationalError("database is locked (simulated)")
-        return lookup_faq(topic)
+            raise FaqToolError("the FAQ server reported: the FAQ database failed (OperationalError) "
+                               "(simulated)", retryable=True)
+        return await real_lookup(topic)
 
     return lookup
 
@@ -339,8 +355,99 @@ def describe(node: str, update: dict) -> str:
     return ""
 
 
+def read_line(prompt: str) -> str:
+    """input() where Ctrl-C raises KeyboardInterrupt right away. asyncio.run swaps Python's Ctrl-C
+    handler for one that only cancels the main task, and a blocking input() wouldn't notice that
+    until Enter. So Python's own handler is put back just while we wait for the customer."""
+    asyncio_handler = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        return input(prompt)
+    finally:
+        signal.signal(signal.SIGINT, asyncio_handler)
+
+
+async def chat(args: argparse.Namespace) -> None:
+    load_dotenv()
+    started = time.perf_counter()
+    # `async with` starts the MCP server now and stops it when the chat ends, however it ends.
+    async with FaqClient() as faq:
+        if faq.connected:
+            print(f"(FAQ server started over MCP in {time.perf_counter() - started:.1f} s)")
+        else:
+            print(f"(couldn't start the FAQ server: {faq.last_error}. FAQ questions will be handed off.)")
+        lookup_fn = failing_lookup(args.simulate_tool_error, faq.lookup) if args.simulate_tool_error \
+            else faq.lookup
+        # The checkpointer saves the state after every node, per thread_id. Calling the graph again with
+        # the same thread_id continues from the saved state: that's the conversation memory.
+        graph = build_graph(lookup_fn, checkpointer=InMemorySaver())
+
+        def new_config() -> dict:
+            return {"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": args.max_steps}
+
+        config = new_config()
+        print('ჯიხვი assistant (LangGraph + MCP). Ask in Georgian. "/reset" starts a new conversation, '
+              '"exit" quits.')
+        if args.simulate_tool_error:
+            print(f"(simulating FAQ database errors: {args.simulate_tool_error})")
+        while True:
+            try:
+                # input() blocks the event loop while it waits, which is fine here: nothing else
+                # needs to run between turns.
+                question = read_line("\nთქვენ: ").strip()
+            except (EOFError, KeyboardInterrupt):  # Ctrl-D, Ctrl-C, or the end of piped input
+                break
+            if question.lower() in ("", "exit", "quit"):
+                break
+            if question == "/reset":
+                config = new_config()  # new thread = empty state
+                print("(new conversation)")
+                continue
+
+            # Restart the server here if the last lookup broke the connection. This task opened the
+            # connection, so it's the one allowed to close and reopen it (see faq_client.py).
+            if not faq.connected:
+                restart = time.perf_counter()
+                if await faq.ensure_connected():
+                    print(f"  [mcp] restarted the FAQ server ({time.perf_counter() - restart:.1f} s)")
+                else:
+                    print(f"  [mcp] FAQ server still unavailable: {faq.last_error}")
+
+            user_message = HumanMessage(question, id=str(uuid.uuid4()))  # our own id, so we can remove it
+            turn_cost, turn_started = 0.0, time.perf_counter()
+            last = turn_started
+            try:
+                # stream_mode="updates" yields {node_name: what_that_node_returned} after each node runs.
+                async for step in graph.astream({"messages": [user_message]}, config, stream_mode="updates"):
+                    for node, update in step.items():
+                        now = time.perf_counter()
+                        turn_cost += update.get("cost", 0.0)
+                        print(f"  [{node}] {describe(node, update)}  ({now - last:.1f} s)")
+                        last = now
+            except AuthenticationError:
+                sys.exit("Error: the API key was rejected. Check OPENAI_API_KEY in .env.")
+            except (RateLimitError, APIConnectionError, APIStatusError) as e:
+                # The checkpointer already saved the question; remove it so the next turn doesn't see
+                # an unanswered message. RemoveMessage is how the add_messages reducer deletes by id.
+                await graph.aupdate_state(config, {"messages": [RemoveMessage(id=user_message.id)]})
+                print(f"Error: {type(e).__name__}: {getattr(e, 'message', e)}. Try again or type exit.")
+                continue
+            except GraphRecursionError:
+                # The step limit stopped the turn. It can trigger after the reply was already sent (the
+                # limit also counts one step beyond the last node), so only answer a still-open question.
+                # The reply is saved as if the handoff node had run, which drops the unfinished steps.
+                print(f"  [step limit] stopped at the limit of {args.max_steps} steps")
+                if (await graph.aget_state(config)).values["messages"][-1].id == user_message.id:
+                    await graph.aupdate_state(config, {"messages": [AIMessage(STEP_LIMIT_REPLY)],
+                                                       "clarify_turns": 0}, as_node="handoff")
+
+            state = (await graph.aget_state(config)).values  # the checkpointer's state after the last node
+            print(f"ჯიხვი: {state['messages'][-1].content}")
+            print(f"  [${turn_cost:.5f} this turn, {time.perf_counter() - turn_started:.1f} s; "
+                  f"session ${state['cost']:.5f}; {len(state['messages'])} messages in state]")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Terminal chat with the ჯიხვი assistant (LangGraph).")
+    parser = argparse.ArgumentParser(description="Terminal chat with the ჯიხვი assistant (LangGraph + MCP).")
     parser.add_argument("--draw", action="store_true", help="print the graph as Mermaid and exit")
     parser.add_argument("--simulate-tool-error", choices=["once", "always"],
                         help="make the FAQ lookup fail, to test the error path")
@@ -349,67 +456,18 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.draw:
-        # Drawing only reads the wiring and never calls the model, so a placeholder key is enough.
-        print(build_graph(llm=ChatOpenAI(model=MODEL, api_key="unused")).get_graph().draw_mermaid())
+        # Drawing only reads the wiring and never calls the model or the server, so placeholders do.
+        async def no_lookup(topic: str) -> list[dict]:
+            return []
+        print(build_graph(no_lookup, llm=ChatOpenAI(model=MODEL, api_key="unused")).get_graph().draw_mermaid())
         return
-
-    load_dotenv()
-    lookup_fn = failing_lookup(args.simulate_tool_error) if args.simulate_tool_error else lookup_faq
-    # The checkpointer saves the state after every node, per thread_id. Calling the graph again with
-    # the same thread_id continues from the saved state: that's the conversation memory.
-    graph = build_graph(checkpointer=InMemorySaver(), lookup_fn=lookup_fn)
-
-    def new_config() -> dict:
-        return {"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": args.max_steps}
-
-    config = new_config()
-    print('ჯიხვი assistant (LangGraph). Ask in Georgian. "/reset" starts a new conversation, "exit" quits.')
-    if args.simulate_tool_error:
-        print(f"(simulating FAQ database errors: {args.simulate_tool_error})")
-    while True:
-        try:
-            question = input("\nთქვენ: ").strip()
-        except (EOFError, KeyboardInterrupt):  # Ctrl-D, Ctrl-C, or the end of piped input
-            break
-        if question.lower() in ("", "exit", "quit"):
-            break
-        if question == "/reset":
-            config = new_config()  # new thread = empty state
-            print("(new conversation)")
-            continue
-
-        user_message = HumanMessage(question, id=str(uuid.uuid4()))  # our own id, so we can remove it
-        turn_cost, started = 0.0, time.perf_counter()
-        last = started
-        try:
-            # stream_mode="updates" yields {node_name: what_that_node_returned} after each node runs.
-            for step in graph.stream({"messages": [user_message]}, config, stream_mode="updates"):
-                for node, update in step.items():
-                    now = time.perf_counter()
-                    turn_cost += update.get("cost", 0.0)
-                    print(f"  [{node}] {describe(node, update)}  ({now - last:.1f} s)")
-                    last = now
-        except AuthenticationError:
-            sys.exit("Error: the API key was rejected. Check OPENAI_API_KEY in .env.")
-        except (RateLimitError, APIConnectionError, APIStatusError) as e:
-            # The checkpointer already saved the question; remove it so the next turn doesn't see an
-            # unanswered message. RemoveMessage is how the add_messages reducer deletes by id.
-            graph.update_state(config, {"messages": [RemoveMessage(id=user_message.id)]})
-            print(f"Error: {type(e).__name__}: {getattr(e, 'message', e)}. Try again or type exit.")
-            continue
-        except GraphRecursionError:
-            # The step limit stopped the turn. It can trigger after the reply was already sent (the
-            # limit also counts one step beyond the last node), so only answer a still-open question.
-            # The reply is saved as if the handoff node had run, which drops the unfinished steps.
-            print(f"  [step limit] stopped at the limit of {args.max_steps} steps")
-            if graph.get_state(config).values["messages"][-1].id == user_message.id:
-                graph.update_state(config, {"messages": [AIMessage(STEP_LIMIT_REPLY)], "clarify_turns": 0},
-                                   as_node="handoff")
-
-        state = graph.get_state(config).values  # the checkpointer's saved state after the last node
-        print(f"ჯიხვი: {state['messages'][-1].content}")
-        print(f"  [${turn_cost:.5f} this turn, {time.perf_counter() - started:.1f} s; "
-              f"session ${state['cost']:.5f}; {len(state['messages'])} messages in state]")
+    # asyncio.run starts an event loop, runs chat() until it finishes, then closes the loop.
+    try:
+        asyncio.run(chat(args))
+    except KeyboardInterrupt:
+        # Ctrl-C during a turn: asyncio cancelled chat(), `async with FaqClient` stopped the server on
+        # the way out, and asyncio.run turned the cancellation back into KeyboardInterrupt.
+        print("\n(stopped)")
 
 
 if __name__ == "__main__":

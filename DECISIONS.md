@@ -697,3 +697,51 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `ToolError` imported from `mcp.server.mcpserver.exceptions` in `mcp_server.py` → [docs](docs/code/mcp_server.py.md). Tested with a server variant that points `faq.DB_PATH` at a nonexistent directory.
 - **How to explain it:** "Tool errors go back as data the model can see, with the exception type but no internals, instead of crashing the server or hiding the cause."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Lookup node calls the MCP server through a new `FaqClient` in `faq_client.py` `[architecture]`
+- **Decision:** The graph's lookup now goes through an MCP client, `FaqClient`. It starts `mcp_server.py` as a stdio subprocess and keeps one connection open for the whole chat.
+- **Why:** Starting the server takes 3–4 s and a lookup takes milliseconds, so one connection is reused. It also follows the 2.4 plan step. `sys.executable` is used so the server runs in the same venv.
+- **Alternatives:** Keep importing `lookup_faq` directly (this was the 2.2 behaviour, replaced by this step). A new connection per lookup is implied but not discussed.
+- **How:** `faq_client.py` (`FaqClient`, `SERVER_SCRIPT`, `TOOL_NAME`), `mcp.Client(StdioServerParameters(...))` entered through `AsyncExitStack`. `faq_client.py` → [docs](docs/code/faq_client.py.md)
+- **How to explain it:** "I put the FAQ lookup behind MCP and keep a single stdio connection open, because starting the server takes seconds and a lookup takes milliseconds."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · The graph and chat loop become async (`ainvoke`, `astream`, `asyncio.run`) `[architecture]`
+- **Decision:** `lookup`, `understand` and `answer` are now `async`. The chat loop is `async def chat()`, run with `asyncio.run`. `clarify`, `check` and `handoff` stay sync.
+- **Why:** The MCP client is async, so the node that calls it has to be too. The wiring of the graph is unchanged (`--draw` shows the same graph as 2.2).
+- **Alternatives:** none discussed.
+- **How:** `graph.py` (`chat`, `build_graph`, `graph.astream(..., stream_mode="updates")`, `aget_state`, `aupdate_state`). `graph.py` → [docs](docs/code/graph.py.md)
+- **How to explain it:** "The MCP client is async, so I moved the graph to `ainvoke`/`astream` and kept the nodes that don't wait on I/O synchronous."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Every MCP failure becomes `FaqToolError(message, retryable)` `[code]`
+- **Decision:** All failures across the process boundary raise `FaqToolError` with a `retryable` flag. A tool `isError` (for example a database failure) is retryable. A timeout, a closed connection, a server that can't start and a malformed answer are not.
+- **Why:** The probes showed the real failure shapes. A killed server gives `MCPError(-32000, 'Connection closed')`. A missing server file gives an `ExceptionGroup`. Retrying only helps when the server itself is still healthy.
+- **Alternatives:** An earlier draft in this turn made timeouts retryable. It was changed to non-retryable, because after a timeout or a closed connection the same connection can't work until the server restarts.
+- **How:** `faq_client.py` (`FaqToolError`, `CONNECT_TIMEOUT=20`, `LOOKUP_TIMEOUT=5`, imports `CONNECTION_CLOSED` and `REQUEST_TIMEOUT` from `mcp.types`). `faq_client.py` → [docs](docs/code/faq_client.py.md)
+- **How to explain it:** "I probed how the client fails when the server is killed or frozen, and encoded that as a single error type that says whether a retry can help."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · The chat loop restarts the MCP server, not the lookup node `[architecture]`
+- **Decision:** The lookup node only marks the connection as broken. The chat loop restarts the server before the next turn with `ensure_connected()`.
+- **Why:** anyio task groups must be closed by the task that opened them, and LangGraph runs each node in its own task. The break test confirmed the result: after `kill -9` the next turn restarted the server in 3.4 s and answered.
+- **Alternatives:** Restarting inside the lookup node was the implicit alternative. It doesn't work because of the task-ownership rule.
+- **How:** `faq_client.py` (`broken`, `ensure_connected()`, `_close()`), `graph.py` `chat()`. `faq_client.py` → [docs](docs/code/faq_client.py.md)
+- **How to explain it:** "The SDK's task groups have to be closed by the task that opened them, so the long-lived chat loop owns the connection and the graph nodes only report that it broke."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `read_line` restores Python's Ctrl-C handler while waiting at `input()` `[code]`
+- **Decision:** `read_line()` temporarily puts back `signal.default_int_handler` around `input()`, then restores the asyncio handler.
+- **Why:** Testing showed that one Ctrl-C printed a long traceback. `asyncio.run` replaces Python's handler with one that only cancels the main task, and a blocking `input()` doesn't notice that until Enter. After the fix, Ctrl-C at the prompt and during a turn both exit cleanly with no traceback and no leftover server process.
+- **Alternatives:** none discussed.
+- **How:** `graph.py` (`read_line`, `signal`, used in `chat()`). `graph.py` → [docs](docs/code/graph.py.md)
+- **How to explain it:** "`asyncio.run` changes how Ctrl-C works, so I restore Python's default handler only while the program waits for the user's input."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Verify 2.4 by comparing with the 2.2 graph and by killing and freezing the server, then mark it done `[process]`
+- **Decision:** The same 9 questions were run through the committed 2.2 graph and the new one. Break tests used `kill -9`, `SIGSTOP` (a hung server), a missing server file, and `--simulate-tool-error once/always`. Step 2.4 was then marked done in `BUILD_PLAN.md`, with the results recorded.
+- **Why:** The step's "done when" condition is that 2.1–2.2 behaviour is unchanged and a killed server gives a graceful error. All break cases ended in a hand-off with no crash.
+- **Alternatives:** none discussed.
+- **How:** Scratch scripts (`probe.py`, `drive.py`, `sigint.py`), `BUILD_PLAN.md` 2.4 "Result" line.
+- **How to explain it:** "I proved the migration didn't change behaviour by replaying the same questions through the old and new graph, then I broke the server in three different ways."
+- **Decided by:** Claude (unconfirmed)
