@@ -103,6 +103,16 @@ Checked by running them here (Node v22.23.2, npx 10.9.8); the `logging` docs pag
 - **Why stderr for a stdio MCP server:** stdout is the protocol channel, so any log line there corrupts it. stderr is a separate stream, which the client may show or ignore.
 - **Splitting the two streams in bash:** `cmd 2>err.txt` sends stderr to a file and leaves stdout in the pipe: `... | python -c 'import json,sys; json.load(sys.stdin)'` then sees only JSON. `2>&1` merges stderr into stdout, which is why `json.load` failed on the Inspector's output (the server's `[faq-server]` lines were mixed in). `2>/dev/null` discards stderr. I confirmed `python -c 'print("out"); print("err", file=sys.stderr)' 2>file` leaves `err` in the file and `out` on screen.
 
+## 11. Context managers, library vs CLI errors, buffered stdout *(added 2026-10-03)* *(short note)*
+
+Checked in `voice.py`, `speech.py`, `speech_smoke.py`; the `contextlib` and `-u`/`-X` options were checked on docs.python.org.
+
+- **`@contextlib.contextmanager`:** turns a generator with exactly one `yield` into something usable with `with`. Code before `yield` runs on entry, the `with` body runs at the `yield`, code after it runs on exit. Wrap the `yield` in `try/finally` so cleanup runs even if the body raises. `voice.ctrl_c_interrupts()` does this: it swaps the SIGINT handler to `signal.default_int_handler` (Ctrl-C raises `KeyboardInterrupt` immediately) and restores asyncio's handler in `finally`. The code is shorter than a class with `__enter__`/`__exit__`.
+- **Why blocking calls run in the main thread, not `asyncio.to_thread`:** nothing else needs the event loop during a recording, an Azure call or playback. In the main thread Ctrl-C stops them at once; a worker thread can't be interrupted by Ctrl-C, and `asyncio.run` would wait for a still-playing executor thread when shutting down. (Background in the [async note](2026-10-03-python-async-await.md).)
+- **Library vs CLI error handling:** a library function (`speech.py`) must not call `sys.exit`: it `raise SpeechError("readable message")`. Only the CLI entry point (`speech_smoke.main()`, `voice.main()`) catches it and does `sys.exit(f"Error: {e}")`. The voice loop catches it per turn, prints it and starts the next turn, so one bad Azure call doesn't end the conversation. This was the refactor of `speech_smoke.py` into `speech.py` + a thin CLI. Rule: the caller decides what an error means.
+- **stdout is block-buffered when piped:** on a terminal Python flushes per line; into a pipe or file it collects output into a block, so a timestamped test showed nothing until the program ended. Run `python -u` or set `PYTHONUNBUFFERED=1` (`-u` affects stdout/stderr, not stdin). I confirmed it: `python -c 'print("a"); time.sleep(2); print("b")' | while read l; do echo "$(date +%s) $l"; done` shows both lines at the same second; with `-u` the first appears 2 s earlier.
+- **Testing an interactive program from a script:** `(sleep 20; printf '\n'; sleep 3; printf '\n') | python -u voice.py`. Pitfall: with ~15 s startup (see the [WSL note](2026-10-02-wsl-filesystems.md)), both Enters sat in the pipe before the first prompt and were read back to back, so the "recording" lasted 0.1 s. That's a test-timing problem, not a code bug: sleep longer than startup, or wait for the prompt text.
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>
@@ -112,4 +122,5 @@ Checked by running them here (Node v22.23.2, npx 10.9.8); the `logging` docs pag
 - Built-in functions (`input`, `getattr`): <https://docs.python.org/3/library/functions.html>
 - `typing` (TypedDict, Annotated, Literal): <https://docs.python.org/3/library/typing.html> *(opened 2026-10-03)*
 - Real Python, "How to Build Command Line Interfaces in Python With argparse": <https://realpython.com/command-line-interfaces-python-argparse> (title and URL confirmed in a search result; the page returned 403 to my fetch, so I haven't read it).
+- `contextlib.contextmanager`: <https://docs.python.org/3/library/contextlib.html>; `-u` and `-X importtime`: <https://docs.python.org/3/using/cmdline.html> *(opened 2026-10-03)*
 - Related notes: [reading tracebacks](2026-10-02-reading-python-tracebacks.md), [env vars and dotenv](2026-10-02-env-vars-and-dotenv.md).
