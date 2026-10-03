@@ -61,10 +61,11 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
   - Done when: an ambiguous request triggers a clarifying question; a simulated tool error gets an honest reply; "block my card" isn't falsely confirmed.
   - Result: new nodes `clarify`, `check`, `handoff`; `lookup` retries once (a cycle). "რამდენი ღირს?" gets a clarifying question, and a second unclear reply hands off. `--simulate-tool-error always` gives the fixed "technical problem" reply, and `once` recovers on the retry. "ბარათი დამიბლოკეთ" → "I can't do it myself" plus the app steps. With a prompt forced to lie, `check` blocked "დავბლოკე". The 2.1 TV-packages case now hands off (`answered=false`) instead of guessing. Found: LangGraph's `recursion_limit` needs N+1 for an N-node path, and can trigger after the reply was already sent.
 
-- [ ] **2.3 MCP server**
+- [x] 2026-10-03 **2.3 MCP server** *(`mcp_server.py`)*
   - Do: move `lookup_faq` into a small MCP server (stdio) and test it with the MCP Inspector.
   - Learn: MCP client vs. server, tool discovery, schemas, transports.
   - Done when: the Inspector lists the tool and a call returns FAQ data.
+  - Result: `mcp` 2.3.0 (v2 SDK: `FastMCP` is now `MCPServer`). The search stays in `faq.py`, and the server wraps it. The Inspector CLI (`--method tools/list`, `tools/call`) shows the input schema (with `minLength`/`maxLength`), an output schema from Pydantic models, and read-only annotations. `ბარათი` returns 3 entries as `structuredContent` plus JSON text. Break tests: empty, too long, missing, or non-string `topic`, and an unknown tool name, each return `isError: true` without reaching our code. A broken DB path gives "the FAQ database failed (OperationalError)", and a quote character gives `[]`. A stray `print()` to stdout didn't crash this SDK's client (it logged "Failed to parse JSONRPC message" and skipped the line), but it breaks the protocol, so logs go to stderr.
 
 - [ ] **2.4 Connect the graph to MCP**
   - Do: the graph's lookup node calls the tool through an MCP client instead of the Python function.

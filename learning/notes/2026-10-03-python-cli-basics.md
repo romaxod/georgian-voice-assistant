@@ -93,6 +93,16 @@ Checked by running them in the repo's Python 3.14 (`re` docs page not re-opened)
 - **`a | b` on dicts** (Python 3.9+): a new dict with the keys of both; for shared keys the right side wins. `update | {"draft": "", "answered": False}` adds keys without changing `update`. `a |= b` updates in place. (Don't confuse with `X | None` in type hints.)
 - `nonlocal` for a rebinding counter is added to the closures bullet in section 7.
 
+## 10. `npx`, `logging` and stderr *(added 2026-10-03)* *(short note)*
+
+Checked by running them here (Node v22.23.2, npx 10.9.8); the `logging` docs page was not re-opened.
+
+- **`npx <package> args`** runs a command from an npm package without installing it globally. It downloads the package into a cache (`~/.npm/_npx/<hash>`), then runs it; later runs reuse the cache. **`-y`** (`--yes`) answers "OK to install?" automatically, which matters in scripts where nobody can type. Without a version you get the latest, so the Inspector can change between runs; pin it (`pkg@2.9.0`) when you need repeatable results. `npx` needs Node; step 2.3 uses it only for the MCP Inspector, nothing in the Python project depends on it. See the [MCP note](2026-10-03-mcp-servers.md).
+- **`logging`:** `logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[faq-server] %(message)s")` configures the root logger once; `log = logging.getLogger("faq-server")` makes a named logger. Levels in order: `DEBUG < INFO < WARNING < ERROR < CRITICAL`; messages below `level` are dropped (I tested: `debug` printed nothing, `info` and `warning` did).
+- **Lazy formatting:** `log.info("lookup_faq(%r) -> %d", topic, n)` passes the arguments separately, and the string is built only if the message is actually emitted. An f-string is built every time, even when the level filters the message. `%r` prints the repr (quotes, escapes), which exposes stray spaces.
+- **Why stderr for a stdio MCP server:** stdout is the protocol channel, so any log line there corrupts it. stderr is a separate stream, which the client may show or ignore.
+- **Splitting the two streams in bash:** `cmd 2>err.txt` sends stderr to a file and leaves stdout in the pipe: `... | python -c 'import json,sys; json.load(sys.stdin)'` then sees only JSON. `2>&1` merges stderr into stdout, which is why `json.load` failed on the Inspector's output (the server's `[faq-server]` lines were mixed in). `2>/dev/null` discards stderr. I confirmed `python -c 'print("out"); print("err", file=sys.stderr)' 2>file` leaves `err` in the file and `out` on screen.
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>

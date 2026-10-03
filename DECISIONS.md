@@ -641,3 +641,59 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** Scratch script that sets `graph.ANSWER_PROMPT` and `graph.CONTEXT_ACTION` before `graph.build_graph`. Results are in the 2.2 `Result:` line in `BUILD_PLAN.md`.
 - **How to explain it:** I tested the guardrail by making the model misbehave on purpose, which showed the regex check catches a false claim even when the prompt fails.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · MCP server for `lookup_faq` using the `mcp` v2 SDK over stdio `[architecture]`
+- **Decision:** Wrap the existing `faq.lookup_faq` in an MCP server, `mcp_server.py`, built with `MCPServer("jikhvi-faq")` from `mcp` 2.3.0 and run on the stdio transport. The search logic stays in `faq.py`.
+- **Why:** BUILD_PLAN step 2.3. The tool is then discoverable and callable by any MCP client (Inspector, `graph.py` in step 2.4, Claude Desktop) without importing our Python code. The docstring says this. The stdio choice itself is not argued beyond the plan's "(stdio)".
+- **Alternatives:** Other transports (SSE, streamable-http) exist in the SDK, but none were discussed as options. Calling `faq.py` directly, as now, is what the server replaces.
+- **How:** `mcp_server.py` → [docs](docs/code/mcp_server.py.md); `@mcp.tool(...)` on `lookup_faq`; `requirements.txt` re-frozen with `mcp==2.3.0`.
+- **How to explain it:** I put the FAQ search behind an MCP server so any client can discover the tool and its schema at runtime, instead of hard-coding the function into the graph.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Use the v2 `MCPServer` API, checked in the installed SDK instead of old tutorials `[tooling]`
+- **Decision:** Import `MCPServer` from `mcp.server`, not `FastMCP`. The API was read from the installed package source and README.
+- **Why:** In v2 `FastMCP` was renamed to `MCPServer`, so older tutorials would be wrong.
+- **Alternatives:** Following older `FastMCP` tutorials. Not used because they are out of date for this version.
+- **How:** `mcp_server.py` imports; the installed package is under `.venv/lib/python3.14/site-packages/mcp`.
+- **How to explain it:** The SDK had a breaking rename, so I read the installed source and not blog posts.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Typed `LookupResult` output model and read-only tool annotations `[code]`
+- **Decision:** The tool returns a Pydantic `LookupResult` (`results: list[FaqEntry]`, `note`). It also declares `ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False)`. The `topic` argument has `minLength` 1 and `maxLength` 200 (`MAX_TOPIC_CHARS`, the same limit as `graph.py`).
+- **Why:** The return type becomes the tool's `outputSchema`, and the result is sent both as JSON text in `content` and as `structuredContent`. The SDK validates arguments against the schema before the function runs. The annotations are hints for clients. The 200-character limit mirrors `graph.py` because a search query is only a few words.
+- **Alternatives:** none discussed.
+- **How:** `FaqEntry`, `LookupResult` and `lookup_faq` in `mcp_server.py` → [docs](docs/code/mcp_server.py.md).
+- **How to explain it:** Typed schemas and read-only hints let any client know what the tool takes and returns, and that it is safe to call.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Server logs go to stderr, never `print()` to stdout `[code]`
+- **Decision:** `logging.basicConfig(stream=sys.stderr, ...)` with the prefix `[faq-server]`. No `print()` in the server.
+- **Why:** On stdio, stdout carries the JSON-RPC protocol. The break test showed that a stray `print()` didn't crash this SDK's client (it logged "Failed to parse JSONRPC message" and skipped the line), but it still breaks the protocol.
+- **Alternatives:** none discussed.
+- **How:** Logging setup at the top of `mcp_server.py` → [docs](docs/code/mcp_server.py.md).
+- **How to explain it:** With the stdio transport, stdout belongs to the protocol, so all logging goes to stderr.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Test the MCP server with Inspector CLI plus break tests, then mark 2.3 done `[process]`
+- **Decision:** Verify with `npx @modelcontextprotocol/inspector --cli` (`tools/list`, `tools/call`). Then run break tests: empty, whitespace, too long, missing and non-string `topic`, an unknown tool, a quote character, a no-match query, a broken DB path, and a stray stdout `print()`. Use a Python `mcp.Client` script for the cases the CLI couldn't cover. Mark step 2.3 `[x]` in `BUILD_PLAN.md`.
+- **Why:** The plan's "Done when" is that the Inspector lists the tool and a call returns FAQ data. Results: the tool was listed, `ბარათი` returned 3 entries, bad arguments gave `isError: true` without reaching our code, a broken DB gave an `OperationalError` message, and a quote character gave `[]`.
+- **Alternatives:** The interactive Inspector UI in the browser (the docstring mentions it). The CLI was used in this turn, and the reason is not stated.
+- **How:** `BUILD_PLAN.md` step 2.3 "Result" line. The test scripts are in the session scratchpad and are not committed.
+- **How to explain it:** I tested the server with the official Inspector and tried to break it with bad input, a broken database and stdout pollution before calling it done.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Topic limit of 1–200 characters in the MCP tool schema, same as `graph.py` `[code]`
+- **Decision:** `lookup_faq` in `mcp_server.py` limits `topic` to 1–200 characters (`MAX_TOPIC_CHARS = 200`, `minLength`/`maxLength` in the input schema). The SDK rejects other values before our function runs.
+- **Why:** The code comment says a search query is a few words, and the limit matches the one in `graph.py`. The break tests (empty, missing, 300-character `topic`) came back as `isError: true` without reaching our code.
+- **Alternatives:** None discussed.
+- **How:** `MAX_TOPIC_CHARS` and the `Annotated[str, Field(...)]` parameter in `mcp_server.py` → [docs](docs/code/mcp_server.py.md). Checked with the Inspector CLI and the Python MCP client.
+- **How to explain it:** "I validate arguments in the tool's schema, so a bad call is rejected by the protocol layer before it reaches my search code."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Database failures raised as `ToolError` with a readable message `[code]`
+- **Decision:** When the FAQ database fails, `mcp_server.py` raises `ToolError` with the message "the FAQ database failed (OperationalError)". The client gets `isError: true` and a message it can read. A whitespace-only topic gets its own error: "topic must contain at least one word".
+- **Why:** The report says any other crash would only show a generic "Error executing tool". The break test with an unopenable DB path confirmed the readable message arrives.
+- **Alternatives:** Letting exceptions propagate was implied, with the generic message. No other option was discussed.
+- **How:** `ToolError` imported from `mcp.server.mcpserver.exceptions` in `mcp_server.py` → [docs](docs/code/mcp_server.py.md). Tested with a server variant that points `faq.DB_PATH` at a nonexistent directory.
+- **How to explain it:** "Tool errors go back as data the model can see, with the exception type but no internals, instead of crashing the server or hiding the cause."
+- **Decided by:** Claude (unconfirmed)
