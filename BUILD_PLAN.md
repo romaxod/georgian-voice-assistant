@@ -32,7 +32,7 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
   - Learn: why the model is stateless and *you* resend history; lists of dicts; the system prompt.
   - Done when: a follow-up question ("და რამდენი ღირს?") is answered using the earlier turn.
 
-- [ ] **1.3 The fictional service and its data**
+- [x] 2026-10-03 **1.3 The fictional service and its data**
   - Do: (service already chosen in 1.2: ჯიხვი, a fictional mobile operator) write ~15–25 FAQ entries, starting from the facts in `chat.py`'s system prompt, load them into SQLite, and write `lookup_faq(topic)` in plain Python.
   - Learn: SQLite from Python, parameterized queries (why not f-strings → SQL injection), returning JSON-friendly data.
   - Done when: `lookup_faq("ბარათი")` returns matching entries, and a query with a quote character doesn't break it.

@@ -16,3 +16,6 @@ runs/
 
 # Code-docs hook run log, lock and off switch (local only)
 .claude/code-docs/
+
+# Generated from data/faq.json by faq.py
+data/*.db

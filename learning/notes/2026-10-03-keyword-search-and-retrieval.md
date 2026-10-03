@@ -1,0 +1,80 @@
+# Keyword search, ranking and Georgian morphology
+
+Date: 2026-10-03. Checked against the SQLite FTS5 docs, the Manning/Raghavan/Schütze IR book site, search results on Georgian NLP tools, and by running `lookup_faq` and an FTS5 snippet in this repo (SQLite 3.45.1 has FTS5).
+
+## 1. What you're learning, and why it matters
+
+**Problem:** given a short query ("ბარათი", "ჯიხვი M"), return the right FAQ entries first. This is **retrieval**: finding relevant pieces of knowledge to give the model (the core of RAG, retrieval-augmented generation). Bad retrieval means the model answers from the wrong entry or invents.
+
+**How `lookup_faq` scores.** Per search word, an entry gets points; the sum is its score; sort by score, then `id`:
+- **+2** if the exact word is in `topic` or `keywords`. Whole-word match is done by padding with spaces: `' ' || topic || ' ' || keywords || ' ' LIKE '% word %'`.
+- **+2** if the word's **stem** is in `topic` (the entry's headline), **+1** if the stem is anywhere in the entry.
+- Stems under 3 letters skip substring checks (else "m" matches every "SIM" and "MB").
+- **Stopwords** (რა, და, როგორ...) are dropped: they're in nearly every entry and match everything.
+
+**Georgian morphology.** Georgian is **agglutinative**: endings attach to the word for case and plural. ბარათი (nominative), ბარათის (genitive), ბარათით (instrumental) share one stem. A **stem** is the shared front part. The naive stemmer cuts one suffix from `("ების","ებს","ები","ის","ით","ში","ზე","ად","ს","ი")` if at least 3 letters remain. `LIKE '%ბარათ%'` then finds all forms. It is crude: it can over-cut, and it misses stem changes inside the word (verbs especially).
+
+**Why each rule exists (real before/after):**
+- Count-only scoring: `ბარათი` -> `['balance-topup','new-number','pin-puk']`: all tied, alphabetical tie-break, a bank-card entry first. With topic weighting: `['sim-lost','sim-replace','balance-topup']`.
+- `ტარიფები` lost the overview entry on a tie, and `ჯიხვი M` dropped the single letter M. After the whole-word bonus: `ტარიფები` -> `['plans-overview','plan-change','plan-l']`, `ჯიხვი M` -> `['plan-m','plan-l','plan-s']`.
+- Others: `როუმინგი ევროპაში` -> `['roaming-europe','roaming-no-package']`; `esim` -> `['esim-activation','new-number']` (LIKE is case-insensitive for ASCII only, so Georgian has no case issue and Latin works); `პიცა` -> `[]`; `რა როგორ` -> `[]` (all stopwords). Returning `[]` is a feature: the model must say "I don't know" or hand off.
+- **Real ambiguity:** ბარათი means SIM card and bank card. A good assistant asks a clarifying question; it's a good eval case for steps 2.2 and 3.1.
+
+## 2. In this repo
+
+`faq.py` functions `_words`, `_stem`, `_escape_like`, `lookup_faq`. Try `.venv/bin/python faq.py ბარათი`. Why plain `LIKE` for 21 entries: explainable (you can say why entry X ranked first), no dependencies, and the model in step 1.4 will send short keywords, not sentences.
+
+## 3. How the pieces fit
+
+```
+query -> split, strip, lowercase, drop stopwords, dedupe, cap 5 -> per word: exact? stem-in-topic? stem-anywhere?
+      -> sum points per entry -> ORDER BY score DESC, id LIMIT 3 -> list of dicts
+```
+
+## 4. Related tools and when to switch
+
+- **SQLite FTS5:** a built-in full-text index. `CREATE VIRTUAL TABLE ft USING fts5(topic, body)`; the default `unicode61` tokenizer splits on non-letters and works with Georgian letters; prefix queries use `ბარათ*` (the `*` outside quotes); `ORDER BY bm25(ft)` ranks (lower is better). I ran it here: `match 'ბარათ*'` found ბარათი. Gotcha: `MATCH` has its own query syntax, so a stray quote is an error even with a placeholder: `fts5: syntax error near "'"`. Sanitize/quote the query (wrap each word in double quotes).
+- **BM25:** the standard keyword ranking formula. Roughly: rare words count more (IDF, inverse document frequency), repeated words help with diminishing returns, long documents are normalized. It's what FTS5, Elasticsearch and Lucene use. It beats hand-tuned weights once you have hundreds of documents.
+- **Stemmers/lemmatizers.** A **lemmatizer** maps a word to its dictionary form. For Georgian I found: a finite-state morphological analyzer (Irina Lobzhanidze, "Finite-State Computational Morphology: An Analyzer and Generator for Georgian", Springer, reported in search results), and a small seq2seq lemmatizer on GitHub, `screeve/lemmatizer` (BART trained on the Georgian National Corpus; 3 stars, 4 commits, MIT; I opened its README). I found no standard, maintained one in common libraries (NLTK/Snowball have no Georgian stemmer as far as I could confirm; I did not verify that exhaustively). So the hand-written suffix list is a reasonable stopgap, and its limits are worth measuring.
+- **Embeddings / vector search:** convert text to vectors so "ფასი" and "ღირებულება" match by meaning. Handles synonyms and paraphrase, costs an embedding model, an index, and is harder to explain. **Hybrid search** runs BM25 and vectors, then merges rankings (e.g. reciprocal rank fusion). Switch when queries are long natural sentences, synonyms matter, or the corpus grows past a few hundred entries.
+- **Retrieval evaluation:** build a tiny labeled set (e.g. 30 queries, each with the correct entry id(s)). **precision@k** = fraction of the top k results that are correct; **recall@k** = fraction of the correct entries that appear in the top k. Run it after each change (stemmer, weights, FTS5) to see if it really improved. This ties into Phase 3 evals; the break cases above are the seed of that set.
+
+## 5. Hands-on exercises
+
+1. Run `faq.py` with `ბარათი`, `ბარათის`, `ბარათით`. Check: overlapping top results.
+2. Run `faq.py "რა როგორ"` and `faq.py პიცა`. Check: `[]` both.
+3. Write 10 queries with the expected entry id in a Python list; compute precision@1 and recall@3 with a loop over `lookup_faq`. Check: a number you can compare after tweaking `SUFFIXES`.
+4. Copy the FTS5 snippet: create an fts5 table in `:memory:`, insert the FAQ rows, query `ბარათ*` ordered by `bm25`. Check: compare ranking to `lookup_faq`.
+5. Make a query that fools the stemmer (e.g. a short word ending in "ს"). Check: explain why.
+
+## 6. Self-check
+
+1. Why do suffixes matter for Georgian search? 2. Why a stem-length minimum of 3? 3. Why do topic matches weigh more than body matches? 4. What does FTS5 give you over LIKE, and what new risk? 5. Define precision@k and recall@k. 6. When would you add embeddings?
+
+<details><summary>Answers</summary>
+
+1. One word has many case forms; exact match misses most of them. 2. Short stems match inside unrelated words ("m" in SIM/MB). 3. The topic is the entry's headline; body mentions are incidental, so they caused ties and wrong first results. 4. A real index, tokenizer, prefix queries, BM25 ranking; but MATCH has its own syntax so input must be quoted. 5. Share of the top k that is relevant; share of all relevant that made the top k. 6. Natural-language queries, synonyms, large corpus, or when measured recall on the labeled set is too low.
+</details>
+
+## 7. Ways to learn it (choose later)
+
+| Option | Good for | Time |
+|---|---|---|
+| A. Claude walks you through | Scoring rules and the labeled-set exercise | 45 min |
+| B. Another AI tutor | BM25 math, embeddings vs keywords | 45 min |
+| C. Primary docs | FTS5 and IR fundamentals | 2 h |
+| D. Video/course | Hybrid search intuition | 1-2 h |
+
+**A.** Paste: "Read learning/notes/2026-10-03-keyword-search-and-retrieval.md and walk me through exercises 1-5 with faq.py, then help me build the labeled query set."
+
+**B.** NotebookLM with the C links. Prompt: "Using https://www.sqlite.org/fts5.html and https://nlp.stanford.edu/IR-book/html/htmledition/irbook.html, explain BM25 step by step with a 3-document example, then compare keyword, vector and hybrid search for a 21-entry Georgian FAQ."
+
+**C.**
+- <https://www.sqlite.org/fts5.html>: sections on tokenizers (unicode61), prefix queries, `bm25()`, and query syntax.
+- <https://nlp.stanford.edu/IR-book/html/htmledition/irbook.html>: "Introduction to Information Retrieval" (Manning, Raghavan, Schütze, 2008); read the chapters on the term vocabulary (stemming and lemmatization), scoring/tf-idf, and evaluation (precision/recall). Chapter list from the book site; I didn't read the chapters.
+- <https://github.com/screeve/lemmatizer>: the Georgian lemmatizer README.
+
+**D.**
+- "A no nonsense intro to BM25" (YouTube): <https://www.youtube.com/watch?v=TW9vHU1GpU4> (title and link from a search result; creator not confirmed; not watched).
+- "Hybrid Search in RAG Explained" (YouTube): <https://www.youtube.com/watch?v=D8LmsEOJvPI> (same caveat).
+- Course: "Retrieval Optimization: From Tokenization to Vector Quantization", DeepLearning.AI with Qdrant (instructor Kacper Łukawski), free, about 1.5 h, covers measuring retrieval quality: <https://www.deeplearning.ai/courses/retrieval-optimization-from-tokenization-to-vector-quantization> (details from search results; not opened).

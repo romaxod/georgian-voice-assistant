@@ -33,6 +33,18 @@ Date: 2026-10-03. Checked against the Python 3 docs (tutorial pages on errors an
 - `pytest` with `monkeypatch` or `capsys`: test `input()` loops in code instead of in the shell.
 - `readline`/`prompt_toolkit`: line editing and history in interactive prompts.
 
+## 5. Small Python bits from `faq.py` *(added 2026-10-03)*
+
+Checked against the `pathlib`, `json` and `argparse` docs and by running snippets.
+
+- **`Path(__file__).parent / "data"`**: `__file__` is the script's own path; `.parent` is its folder; `/` joins path pieces. Paths built this way work from any current directory, unlike `"data/faq.json"`, which depends on where you ran `python` from.
+- **`Path.read_text(encoding="utf-8")`** opens, reads, closes in one call. Always pass the encoding for Georgian text; the default depends on the OS (on Windows it may not be UTF-8).
+- **`.stat().st_mtime`**: last-modified time in seconds (float). `faq.py` compares db and JSON mtimes to decide whether to rebuild.
+- **`json.loads(s)`** parses a **string**; **`json.load(f)`** parses an open **file**. `json.dumps(obj, ensure_ascii=False, indent=2)`: without `ensure_ascii=False` Georgian prints as `ბ` escapes (valid JSON, unreadable); `indent=2` pretty-prints.
+- **`argparse` `nargs="*"`**: a positional argument takes zero or more words into a list, so `python faq.py ჯიხვი M` gives `["ჯიხვი", "M"]` and `" ".join(...)` rebuilds the query. No quotes needed. Empty list when omitted.
+- **`dict.fromkeys(list)`** makes a dict with the list items as keys; dicts keep insertion order and keys are unique, so `list(dict.fromkeys(words))` removes duplicates while keeping order (a `set` would lose order).
+- **JSON-friendly returns:** `lookup_faq` returns a list of plain `dict`s (`{k: row[k] ...}`), not `sqlite3.Row` objects, because `json.dumps` can't serialize `Row`. In step 1.4 the result can go straight into a tool message.
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>

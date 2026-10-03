@@ -321,3 +321,27 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `chat.py` → [docs](docs/code/chat.py.md) (`argparse`, `sent`, exception handlers).
 - **How to explain it:** I built a flag that turns memory off, so I could show that follow-ups depend on the history being resent.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · FAQ data in `data/faq.json`, built into a SQLite DB that is not committed `[architecture]`
+- **Decision:** `data/faq.json` (21 entries) is the source of truth. `faq.py` builds `data/faq.db` (SQLite) from it. The DB is gitignored via `data/*.db`. It rebuilds automatically when it is missing or older than the JSON (mtime check).
+- **Why:** The JSON is easy to read and diff. The DB is a generated artifact. Deleting `faq.db` and then calling `lookup_faq('PUK')` rebuilt it and returned `['pin-puk']`.
+- **Alternatives:** none discussed. The plan already specified SQLite, and the stdlib `sqlite3` module was checked for availability.
+- **How:** `data/faq.json`, `faq.py` (`build_db`, `_ensure_db`), `.gitignore`. `faq.py` → [docs](docs/code/faq.py.md)
+- **How to explain it:** I keep the readable JSON as the source of truth and generate the SQLite DB from it. The DB rebuilds itself when stale, so nothing generated needs committing.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Parameterized SQL with escaped LIKE wildcards in `lookup_faq` `[code]`
+- **Decision:** User words go to SQLite only as `?` placeholders in `params`, never formatted into the SQL text. `_escape_like` escapes `%`, `_` and `\` so they match literally, and `MAX_TERMS = 5` caps the SQL size.
+- **Why:** This prevents SQL injection. A break test ran the same search as an f-string and as a placeholder, using inputs such as `ბარათი'` and `x' OR '1'='1`. The placeholder version stayed safe. The f-string results aren't shown in the excerpt.
+- **Alternatives:** An f-string query was built only as the break-test comparison. No other options were discussed.
+- **How:** `faq.py` (`_escape_like`, `lookup_faq`, `MAX_TERMS`) → [docs](docs/code/faq.py.md)
+- **How to explain it:** The model's input ends up in a query, so I treat it as untrusted. I use placeholders and escape the LIKE wildcards, and I broke it on purpose to prove the point.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Georgian-aware search: suffix stemming, stopwords, and scored LIKE ranking instead of plain substring match `[code]`
+- **Decision:** `_stem` strips common case and plural endings (`SUFFIXES`) and requires at least 3 letters to remain. A `STOPWORDS` set is dropped. Ranking by points: +2 for an exact whole-word match in topic or keywords, +2 for the stem in the topic, +1 for the stem anywhere. Stems shorter than 3 letters skip the substring checks. `lookup_faq(topic, limit=3)` returns the best matches first.
+- **Why:** The first version (a simple count of matching terms) was replaced after lookups ranked poorly. Inflected forms such as `ბარათის` should match `ბარათი`. The code comment says a stem like "m" would otherwise match every "SIM" and "MB". The final run showed every query ranking correctly, and `ტარიფები` now puts `plans-overview` first.
+- **Alternatives:** The first version scored by how many terms appeared anywhere in an entry. It was replaced because the ranking was wrong. FTS5 and embeddings were not discussed.
+- **How:** `faq.py` (`SUFFIXES`, `STOPWORDS`, `_stem`, `_words`, `lookup_faq`) → [docs](docs/code/faq.py.md)
+- **How to explain it:** Georgian is highly inflected, so I do light suffix stripping and weighted scoring in plain SQL. It's cheap and testable. For a larger FAQ I'd move to FTS or embeddings.
+- **Decided by:** Claude (unconfirmed)
