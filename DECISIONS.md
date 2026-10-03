@@ -745,3 +745,51 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** Scratch scripts (`probe.py`, `drive.py`, `sigint.py`), `BUILD_PLAN.md` 2.4 "Result" line.
 - **How to explain it:** "I proved the migration didn't change behaviour by replaying the same questions through the old and new graph, then I broke the server in three different ways."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Speech functions move into a shared `speech.py` that raises `SpeechError` `[architecture]`
+- **Decision:** Record, STT, TTS and playback code moves out of `speech_smoke.py` into `speech.py`. Its functions raise `SpeechError` instead of exiting. `speech_smoke.py` stays as a thin command-line wrapper with the same commands.
+- **Why:** The voice loop (step 2.5) reuses the same functions. It has to report a failed turn and keep going, which `sys.exit` would prevent.
+- **Alternatives:** none discussed.
+- **How:** `speech.py` (`SpeechError`, `speech_config`, `Recorder`, `synthesize`, `transcribe`), `speech_smoke.py`. Regression check: `speech_smoke.py stt` and `tts` still work → [docs](docs/code/speech.py.md), [docs](docs/code/speech_smoke.py.md)
+- **How to explain it:** I split the speech code into a library with typed errors, so both the CLI and the voice loop could reuse it and the loop could survive a failed turn.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Speech-text step is a plain-text rewrite with a `TERMS` table, not SSML `<sub alias>` `[code]`
+- **Decision:** `speech_text.py` rewrites a reply just before TTS. Regex rules handle numbers and symbols (₾ → ლარი, 0.50 → 50 თეთრი, 10:00-დან → 10 საათიდან). Latin words are looked up in `TERMS`, and short all-caps words not in `TERMS` are spelled with English letter names (QR → ქიუარ). `leftover_latin()` reports anything still in Latin letters. Case suffixes after a hyphen are glued onto the spoken form (`SIM-ის` → `სიმის`). The text on screen is unchanged.
+- **Why:** Round trips measured that Azure's Georgian voices read "QR" as run-together letters, skip ₾, read "10:00" as "10 0 0", and drop the S in "ჯიხვი S". The docstring says plain text gives the same audio as SSML without wrapping and escaping every reply.
+- **Alternatives:** SSML `<sub alias="ქიუარ">QR</sub>`, rejected because every reply would have to be wrapped in SSML and escaped.
+- **How:** `speech_text.py` (`TERMS`, `speakable`, `leftover_latin`). `python speech_text.py` shows the rewrite for every FAQ answer and fixed reply. Later additions: `WiFi` stem fix, `key` and `app` terms → [docs](docs/code/speech_text.py.md)
+- **How to explain it:** Azure's Georgian voice can't pronounce English terms or some symbols, so I rewrite the spoken text with a lookup table instead of SSML, and the screen text stays untouched.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `run_turn`, `ensure_faq_server` and `chat_graph` extracted from the `graph.py` chat loop `[architecture]`
+- **Decision:** One chat turn becomes `run_turn(graph, config, question) -> str`, and MCP-server restart becomes `ensure_faq_server`. Graph setup is the sync helper `chat_graph`. The text chat and `voice.py` both call them.
+- **Why:** The voice loop needs the same text pipeline unchanged, so the graph doesn't know whether a question was typed or spoken. A regression run of the text chat (`printf ... | python graph.py`) showed the same behaviour.
+- **Alternatives:** none discussed.
+- **How:** `graph.py` (`run_turn`, `ensure_faq_server`, `chat_graph`), imported in `voice.py` → [docs](docs/code/graph.py.md)
+- **How to explain it:** I refactored one turn into a reusable function, so adding voice didn't touch the graph logic.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Push-to-talk `voice.py`: Enter to start and stop, typing also works, blocking calls in the main thread `[architecture]`
+- **Decision:** `voice.py` runs Enter → record → Enter → STT → graph → `speakable` → TTS → play. Typing a question instead skips STT. `--wav` replays recorded files as questions, and `--no-play`, `--voice` and `--simulate-tool-error` are available. The microphone, Azure and playback calls run directly in the main thread, not in `asyncio.to_thread`. Recordings shorter than `MIN_SECONDS = 0.5` count as an accidental double Enter. `audio/last_question.wav` and `audio/last_reply.wav` are overwritten each turn.
+- **Why:** Nothing else needs the event loop while those calls run, and in the main thread Ctrl-C stops them right away. The per-turn timings include "until the reply starts" because that silence is what the caller notices. `last_question.wav` can be played to hear what STT heard.
+- **Alternatives:** `asyncio.to_thread` for blocking calls, rejected because it delays Ctrl-C. Other push-to-talk schemes: none discussed.
+- **How:** `voice.py` (`QUESTION_WAV`, `REPLY_WAV`, `MIN_SECONDS`, `MIN_PEAK`) → [docs](docs/code/voice.py.md)
+- **How to explain it:** I chose push-to-talk for simplicity and kept blocking audio calls in the main thread so Ctrl-C works, and I print stage timings to see where the silence comes from.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `Recorder.start()` waits for the first audio chunk (`START_TIMEOUT = 3.0`) `[code]`
+- **Decision:** `Recorder.start()` blocks until the first audio arrives, with a timeout of 3.0 s. A `_flowing` event signals the first chunk.
+- **Why:** Measured on WSLg: the first read returns about 0.5 s after the stream opens and holds only 100 ms of audio, so words said in that first half second were lost. Standalone, `start()` took 0.59 s on the first run and 0.02 s on the next.
+- **Alternatives:** none discussed.
+- **How:** `speech.py` (`Recorder.START_TIMEOUT`, `Recorder._flowing`) → [docs](docs/code/speech.py.md)
+- **How to explain it:** I timed the microphone reads, found the first half second was being lost, and made the recorder wait until audio actually flows before telling the user to speak.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Verify 2.5 with voice-loop break tests and raw-vs-`speakable` round trips, and weaken the "word for word" claim `[process]`
+- **Decision:** Break tests ran on `voice.py`: wrong Azure key, a silent WAV, and no PulseAudio server. A real-mic push-to-talk turn and a typed question with real playback were also run. FAQ answers went through TTS → STT both raw and after `speakable()`. The `speech_text.py` docstring was then corrected from "come back word for word" to prices, times and plan names coming back exactly, QR now being said at all, and eSIM still needing a listen.
+- **Why:** The round trip showed raw text turning into "ჯიხვს 15 ჯიხვმა 25", while the rewritten text kept prices and plan names. eSIM came back as "ის იმის", and a round trip tests TTS and STT together, so only listening can confirm how it sounds.
+- **Alternatives:** none discussed.
+- **How:** `python voice.py --no-play --wav ...`, env overrides such as `AZURE_SPEECH_KEY=wrongkey` and `PULSE_SERVER=unix:/nonexistent`, a scratchpad `rt2.py`. Docstring edit in `speech_text.py` → [docs](docs/code/speech_text.py.md)
+- **How to explain it:** I tested the voice loop by breaking it, and I corrected my own docstring when the round-trip evidence only supported a weaker claim.
+- **Decided by:** Claude (unconfirmed)
