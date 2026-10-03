@@ -55,10 +55,11 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
   - Done when: the same questions as 1.4 work, and you can trace one request through every node out loud.
   - Result: all 1.4 questions pass. The TV-packages question (skipped by the model in 1.4) now always goes through lookup, because the graph routes every ჯიხვი question there. Two things left for 2.2/3.1: that lookup returned unrelated entries (matched "პაკეტ"), and the answer said "no information" without offering a human operator.
 
-- [ ] **2.2 Clarify, hand off, and fail safely**
+- [x] 2026-10-03 **2.2 Clarify, hand off, and fail safely**
   - Do: add routes to ask a clarifying question when a request is ambiguous, to hand off to a human when unsure, and to handle tool errors. Add a step limit.
   - Learn: why a graph beats one prompt here, failure modes, and refusing to claim actions it can't take.
   - Done when: an ambiguous request triggers a clarifying question; a simulated tool error gets an honest reply; "block my card" isn't falsely confirmed.
+  - Result: new nodes `clarify`, `check`, `handoff`; `lookup` retries once (a cycle). "რამდენი ღირს?" gets a clarifying question, and a second unclear reply hands off. `--simulate-tool-error always` gives the fixed "technical problem" reply, and `once` recovers on the retry. "ბარათი დამიბლოკეთ" → "I can't do it myself" plus the app steps. With a prompt forced to lie, `check` blocked "დავბლოკე". The 2.1 TV-packages case now hands off (`answered=false`) instead of guessing. Found: LangGraph's `recursion_limit` needs N+1 for an N-node path, and can trigger after the reply was already sent.
 
 - [ ] **2.3 MCP server**
   - Do: move `lookup_faq` into a small MCP server (stdio) and test it with the MCP Inspector.

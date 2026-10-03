@@ -561,3 +561,83 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `graph.py` → [docs](docs/code/graph.py.md); `requirements.txt` (pinned via `pip freeze`); `chat.py` kept for comparison with 1.4.
 - **How to explain it:** I used LangChain's chat model inside LangGraph because it plugs into the message reducer and gives structured output out of the box. In exchange I accepted an extra abstraction layer.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Failure routes as graph nodes (`clarify`, `check`, `handoff`) with one `handoff_reason` key `[architecture]`
+- **Decision:** Step 2.2 adds three nodes to the LangGraph graph. `clarify` asks a clarifying question, `check` vets the draft, and `handoff` ends the turn honestly. Any node that finds a problem writes `state["handoff_reason"]` (plus `handoff_note`), and the routers read only that key.
+- **Why:** The plan asked for clarify, hand-off and safe failure. A single flag keeps routing simple. The final summary says the flag means the routing code reads just one thing.
+- **Alternatives:** None discussed. The plan's "Learn" line says "why a graph beats one prompt here".
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). Routes: `understand`→`clarify`/`lookup`/`answer`/`handoff`, and `check`→`END`/`handoff`.
+- **How to explain it:** "Every failure path writes one reason key, so the routing stays trivial and each failure is visible in the trace."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `understand` writes the clarifying question in the same call, with five intents `[code]`
+- **Decision:** The structured output of `understand` has the intents `faq`, `action`, `ambiguous`, `human` and `other`. For ambiguous messages it also fills `clarifying_question`, and `clarify` only sends that text.
+- **Why:** Asking costs no extra model call. `clarify` stays a plain node with no LLM.
+- **Alternatives:** None discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). The `intent` Literal and the `clarifying_question` field.
+- **How to explain it:** "The classifier already knows what's unclear, so it writes the question in the same call and I don't pay for a second one."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Only one clarifying question; a second unclear message hands off `[code]`
+- **Decision:** `MAX_CLARIFY_TURNS=1`. The state counter `clarify_turns` is tracked, and if the next message is still ambiguous, the turn hands off with the reason `still_unclear`.
+- **Why:** So the assistant doesn't ask forever. The reason for choosing 1 specifically is not stated.
+- **Alternatives:** None discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). `MAX_CLARIFY_TURNS`, `clarify_turns`.
+- **How to explain it:** "I cap clarification at one question, then pass the customer to a human instead of looping."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Lookup retry as a graph cycle instead of `RetryPolicy` `[architecture]`
+- **Decision:** `lookup` retries once on a database error by looping back to itself in the graph. If it fails again, the error is stored as data and the turn hands off with the reason `tool_error`.
+- **Why:** The loop shows up in the trace. The final failure is state the graph can route on, whereas `RetryPolicy` just raises the error again after its last try.
+- **Alternatives:** LangGraph's `RetryPolicy`, rejected for the reasons above.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). The `lookup` retry edge. `--simulate-tool-error once|always` swaps in a failing lookup function.
+- **How to explain it:** "I made the retry a visible cycle in the graph so the failure becomes routable state rather than an exception."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `handoff` sends fixed Georgian templates, with no LLM call `[code]`
+- **Decision:** `handoff` uses a fixed reply per reason (`asked_for_human`, `still_unclear`, `no_facts`, `not_answered`, `tool_error`, `false_action_claim`). For `false_action_claim` it appends the top FAQ entry's answer.
+- **Why:** The failure replies still work when the model is the thing that failed. The appended FAQ text is vetted.
+- **Alternatives:** None discussed. An LLM-written reply is implied and not chosen.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). `HANDOFF_REPLIES`.
+- **How to explain it:** "Failure messages are fixed templates, so they can't hallucinate and they work even when the model is down."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `answer` self-reports `answered`, and `check` blocks unanswered drafts, fixing the 2.1 TV-packages case `[reversal]`
+- **Decision:** `answer` returns the structured `Draft(reply, answered: bool)`. If `answered` is false, `check` hands off with the reason `not_answered`. This replaces leaving the TV-packages case unfixed, which was logged as "TV-packages skip-the-tool case left unfixed, kept as a Phase 3 eval case".
+- **Why:** Lookup returned unrelated entries for TV packages. Now `answered=False` gives an honest hand-off. The final summary confirmed this against the real model.
+- **Alternatives:** Leave it for the Phase 3 eval, as before. No other alternative was discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). The `Draft` model and the `check` node.
+- **How to explain it:** "I had the model say whether the facts really answered the question, and I check that flag in code before sending."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Regex `false_action_claim` in `check` to block claimed actions, with negation lookbehinds `[code]`
+- **Decision:** `check` is plain Python, with no LLM. A regex catches first-person action claims such as "დავბლოკე", and the lookbehinds `(?<!ვერ )(?<!არ )` let negated forms like "ვერ დაგიბლოკავთ" through.
+- **Why:** The assistant can't take actions, so it must not claim to. The offline test passed 10/10 (6 claims caught, 4 honest sentences allowed). A break test with a prompt forced to lie showed `check` blocking "დავბლოკე".
+- **Alternatives:** The prompt alone was a separate layer, and it held up even under the lying prompt. A second LLM judge is not mentioned.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). `false_action_claim()`. Break test in a scratchpad script.
+- **How to explain it:** "I put a deterministic check behind the prompt, then proved it works by telling the model to lie."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Step limit of 10 with `--max-steps`, and the handler replies only to still-open questions `[code]`
+- **Decision:** The `recursion_limit` is 10 by default (the longest normal path is 6 nodes). On `GraphRecursionError`, the code adds the step-limit reply only if the question is still unanswered, saved via `update_state(..., as_node="handoff")`.
+- **Why:** A test showed that a path of N nodes needs a limit of at least N+1 (a 3-node chain fails at 3, passes at 4). The limit can also trigger after the reply was sent. The first version added a second reply, and the extra message in state exposed the bug.
+- **Alternatives:** None discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). `--max-steps`, `STEP_LIMIT_REPLY`.
+- **How to explain it:** "I tested how LangGraph counts steps, and found my handler double-replied because the limit can fire after the answer."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Inject `lookup_fn` and add `--simulate-tool-error once|always` to test the error path `[code]`
+- **Decision:** The graph can be built with a different lookup function. `--simulate-tool-error once|always` passes one that raises a simulated "database is locked" error: `once` fails on the first try only, `always` fails every try.
+- **Why:** To exercise the retry and tool-error handoff paths on demand, since the real SQLite lookup doesn't fail. In the run, `once` recovered on the retry and `always` gave the fixed "technical problem" reply.
+- **Alternatives:** none discussed.
+- **How:** `lookup_fn` parameter in `build_graph`, and the `--simulate-tool-error` flag in `graph.py` → [docs](docs/code/graph.py.md).
+- **How to explain it:** I made the lookup function injectable so I could force database failures and check the retry and honest-failure paths, instead of hoping they work.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Break-test `check` by forcing the answer prompt to lie `[process]`
+- **Decision:** A scratch script (`break_claim.py`, outside the repo) replaces `ANSWER_PROMPT` with one that tells the model it can do every action and must confirm it ("თქვენი SIM დავბლოკე."). It then checks whether the false claim reaches the customer.
+- **Why:** To show `check` works on its own, not only because the normal prompt behaves. The first run still carried the action context (`CONTEXT_ACTION`), and the model told the truth anyway. With that context blanked, `check` blocked the draft (`false_action_claim`). This showed the prompt and the regex are two separate layers.
+- **Alternatives:** none discussed. Only the offline 10-sentence regex test was run alongside it.
+- **How:** Scratch script that sets `graph.ANSWER_PROMPT` and `graph.CONTEXT_ACTION` before `graph.build_graph`. Results are in the 2.2 `Result:` line in `BUILD_PLAN.md`.
+- **How to explain it:** I tested the guardrail by making the model misbehave on purpose, which showed the regex check catches a false claim even when the prompt fails.
+- **Decided by:** Claude (unconfirmed)

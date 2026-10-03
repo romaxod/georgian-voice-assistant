@@ -64,7 +64,7 @@ chat.lookup_faq = broken      # works
 Checked against the `argparse`, `threading`, `time` and `wave` docs (threading.Event page opened) and by running the script.
 
 - **Subcommands:** `commands = parser.add_subparsers(dest="command", required=True)`, then `rec = commands.add_parser("record", help=...)` and `rec.add_argument(...)` per command, like `git commit`. `dest="command"` stores the chosen name in `args.command`; `required=True` makes a missing subcommand an error (otherwise it is `None`). Each subparser has its own options and `--help`.
-- **Nested functions as callbacks (closures):** `on_recognized` is defined inside `transcribe` and uses the local list `parts`. An inner function can *read* and *mutate* outer variables; `parts.append(x)` mutates the list, so no `nonlocal` is needed. Writing `parts = []` inside it would create a new local instead, and rebinding an outer name needs `nonlocal parts`. The SDK later calls the function from another thread, and it still sees `parts`.
+- **Nested functions as callbacks (closures):** `on_recognized` is defined inside `transcribe` and uses the local list `parts`. An inner function can *read* and *mutate* outer variables; `parts.append(x)` mutates the list, so no `nonlocal` is needed. Writing `parts = []` inside it would create a new local instead, and rebinding an outer name needs `nonlocal parts`. *(added 2026-10-03)* `graph.py` uses exactly that: in `failing_lookup`, the inner `lookup` does `nonlocal calls; calls += 1`, because `+=` rebinds the name (without `nonlocal` it raises `UnboundLocalError`). The counter lives in the outer function's scope and keeps its value between calls, a tiny stateful object without a class. The SDK later calls the function from another thread, and it still sees `parts`.
 - **`threading.Event`:** a flag shared between threads. `done.set()` raises it; `done.wait(timeout=30)` blocks until set and returns `True`, or `False` if the timeout passed first. Used to let the main thread sleep until the SDK's `session_stopped` callback fires.
 - **`time.perf_counter()`:** a high-resolution clock for timing; only differences are meaningful (`end - start`). `time.time()` is wall-clock and can jump.
 - **`wave` module:** `with wave.open(path, "rb") as w:` then `getframerate()` (Hz), `getsampwidth()` (bytes per sample), `getnchannels()`, `getnframes()`, `readframes(n)` (bytes). Duration = `getnframes() / getframerate()`; e.g. 88,000 frames at 16 kHz = 5.5 s.
@@ -80,6 +80,18 @@ Checked against the `typing` docs (TypedDict, Annotated, Literal sections opened
 - **`X | None`** (Python 3.10+): same as `Optional[X]`; `lookup_error: str | None`. `llm: ChatOpenAI | None = None` is the "optional argument with a default made inside" idiom: `llm = llm or ChatOpenAI(...)`.
 - **`operator.add`:** the `+` operator as a function: `operator.add(2, 3) == 5`, `operator.add([1], [2]) == [1, 2]`. A reducer is called `reducer(old, new)`, so it sums floats and joins lists.
 - **`uuid.uuid4()`:** a random unique id; `str(uuid.uuid4())` gives text like `'3f2b...'`. Used for `thread_id` (new conversation) and for message ids.
+
+## 9. Bits from the 2.2 `graph.py`: `re`, `Callable`, dict merge *(added 2026-10-03)* *(short note)*
+
+Checked by running them in the repo's Python 3.14 (`re` docs page not re-opened).
+
+- **`re.compile(pattern)`** builds a pattern object once (`FALSE_ACTION_CLAIM`); `.search(text)` finds the first match anywhere and returns a `Match` or `None`; `m.group(0)` is the matched text. `re.match` only matches at the start, `re.findall` returns all matches. Raw strings (`r"..."`) keep `\b` and `\w` from being treated as string escapes.
+- **Unicode.** `str` patterns are Unicode-aware, so `\w` matches Georgian letters and `\b` is a boundary between a letter and a non-letter. Tested: `\bგამარ\w*` matches "გამარჯობა". With `bytes` patterns or `re.ASCII` this would break.
+- **Alternation group** `\b(დავბლოკ|დაგიბლოკ|...)\w*`: `|` means "or"; the group matches one stem and `\w*` takes the rest of the word (the Georgian ending). Georgian words change at the end, so we match stems.
+- **Negative lookbehind** `(?<!ვერ )`: "the text just before this position is not `ვერ `". It matches no characters itself. It must be **fixed width** (`(?<!ვ+)` raises `look-behind requires fixed-width pattern`). To exclude two prefixes, stack two: `(?<!ვერ )(?<!არ )`. Both must hold. Tested: "თქვენი SIM დავბლოკე." matches; "ვერ დაგიბლოკავთ" and "მე არ დაგიბლოკავ" don't. Limit: only the one word before is looked at.
+- **`Callable[[str], list[dict]]`** (`from collections.abc import Callable`): a type hint for "a function taking a `str` and returning a list of dicts". `lookup_fn: Callable[[str], list[dict]] = lookup_faq` says what any stand-in must look like. Not enforced at runtime.
+- **`a | b` on dicts** (Python 3.9+): a new dict with the keys of both; for shared keys the right side wins. `update | {"draft": "", "answered": False}` adds keys without changing `update`. `a |= b` updates in place. (Don't confuse with `X | None` in type hints.)
+- `nonlocal` for a rebinding counter is added to the closures bullet in section 7.
 
 ## Sources
 
