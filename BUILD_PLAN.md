@@ -37,7 +37,7 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
   - Learn: SQLite from Python, parameterized queries (why not f-strings → SQL injection), returning JSON-friendly data.
   - Done when: `lookup_faq("ბარათი")` returns matching entries, and a query with a quote character doesn't break it.
 
-- [ ] **1.4 Tool calling**
+- [x] 2026-10-03 **1.4 Tool calling**
   - Do: give the model `lookup_faq` as a tool. Validate its arguments, run the function, return the result, and have the model answer from it.
   - Learn: tool schemas, the tool-call loop, why *your code* runs the tool, and what to do with bad arguments or empty results.
   - Done when: an FAQ question is answered from the database (you see the tool call printed), and an off-topic question doesn't call the tool.

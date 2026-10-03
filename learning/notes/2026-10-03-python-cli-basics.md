@@ -45,6 +45,20 @@ Checked against the `pathlib`, `json` and `argparse` docs and by running snippet
 - **`dict.fromkeys(list)`** makes a dict with the list items as keys; dicts keep insertion order and keys are unique, so `list(dict.fromkeys(words))` removes duplicates while keeping order (a `set` would lose order).
 - **JSON-friendly returns:** `lookup_faq` returns a list of plain `dict`s (`{k: row[k] ...}`), not `sqlite3.Row` objects, because `json.dumps` can't serialize `Row`. In step 1.4 the result can go straight into a tool message.
 
+## 6. Monkeypatching a module attribute for a break test *(added 2026-10-03)*
+
+To test "what if the database fails?" without breaking the real DB, replace the function at run time:
+
+```python
+import chat
+def broken(topic): raise sqlite3.OperationalError("boom")
+chat.lookup_faq = broken      # works
+```
+
+- **Why `chat.lookup_faq` and not `faq.lookup_faq`:** `chat.py` does `from faq import lookup_faq`, which copies the *name* into `chat`'s namespace. `run_tool` looks the name up there. Patching `faq.lookup_faq` changes a different binding, and `chat` would keep calling the original. Rule: **patch where it's looked up**, not where it's defined.
+- Equivalent in a test framework: `unittest.mock.patch("chat.lookup_faq", side_effect=sqlite3.OperationalError("boom"))` used as a `with` block or decorator; it restores the original afterwards (plain assignment doesn't). Docs: <https://docs.python.org/3/library/unittest.mock.html#where-to-patch> (section "Where to patch"; I did not open this page, it is from memory of the docs structure, so check it).
+- Used in step 1.4 to show the model receives `{"error": ...}` and answers honestly ([function calling note](2026-10-03-function-calling-responses-api.md)).
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>
