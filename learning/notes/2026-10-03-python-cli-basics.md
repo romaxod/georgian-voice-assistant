@@ -70,6 +70,17 @@ Checked against the `argparse`, `threading`, `time` and `wave` docs (threading.E
 - **`wave` module:** `with wave.open(path, "rb") as w:` then `getframerate()` (Hz), `getsampwidth()` (bytes per sample), `getnchannels()`, `getnframes()`, `readframes(n)` (bytes). Duration = `getnframes() / getframerate()`; e.g. 88,000 frames at 16 kHz = 5.5 s.
 - **`array("h", bytes)`:** `from array import array` turns raw bytes into a compact array of signed 16-bit ints (`"h"`), so `max(map(abs, samples))` finds the loudest sample. It uses your machine's byte order (little-endian here, matching WAV).
 
+## 8. Typing bits from `graph.py` *(added 2026-10-03)* *(short note)*
+
+Checked against the `typing` docs (TypedDict, Annotated, Literal sections opened) and by running snippets. Type hints are still not enforced by Python; libraries (LangGraph, Pydantic) *read* them at runtime.
+
+- **`TypedDict`:** a dict type with known keys: `class State(TypedDict): messages: list`. At runtime it is a plain `dict`. `total=False` makes every key optional, which `State` needs because each node returns only some keys and the first call has no `facts` yet. That is why code uses `state.get("facts")` for optional keys.
+- **`Annotated[T, meta]`:** the type `T` plus extra metadata that type checkers ignore. A library can read it: `Annotated[int, "x"].__metadata__` is `('x',)` and `.__origin__` is `int`. LangGraph reads the metadata to find the **reducer**: `Annotated[list[AnyMessage], add_messages]`, `Annotated[float, operator.add]`.
+- **`Literal["faq","other"]`:** only these exact values are allowed. A type checker flags `"typo"`; Pydantic raises `ValidationError`; used as a return type on `route_after_understand`, LangGraph reads it as the list of possible next nodes.
+- **`X | None`** (Python 3.10+): same as `Optional[X]`; `lookup_error: str | None`. `llm: ChatOpenAI | None = None` is the "optional argument with a default made inside" idiom: `llm = llm or ChatOpenAI(...)`.
+- **`operator.add`:** the `+` operator as a function: `operator.add(2, 3) == 5`, `operator.add([1], [2]) == [1, 2]`. A reducer is called `reducer(old, new)`, so it sums floats and joins lists.
+- **`uuid.uuid4()`:** a random unique id; `str(uuid.uuid4())` gives text like `'3f2b...'`. Used for `thread_id` (new conversation) and for message ids.
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>
@@ -77,5 +88,6 @@ Checked against the `argparse`, `threading`, `time` and `wave` docs (threading.E
 - Python tutorial, An Informal Introduction (lists, slicing, negative indices): <https://docs.python.org/3/tutorial/introduction.html>
 - `__main__` and the `main()` pattern: <https://docs.python.org/3/library/__main__.html>
 - Built-in functions (`input`, `getattr`): <https://docs.python.org/3/library/functions.html>
+- `typing` (TypedDict, Annotated, Literal): <https://docs.python.org/3/library/typing.html> *(opened 2026-10-03)*
 - Real Python, "How to Build Command Line Interfaces in Python With argparse": <https://realpython.com/command-line-interfaces-python-argparse> (title and URL confirmed in a search result; the page returned 403 to my fetch, so I haven't read it).
 - Related notes: [reading tracebacks](2026-10-02-reading-python-tracebacks.md), [env vars and dotenv](2026-10-02-env-vars-and-dotenv.md).

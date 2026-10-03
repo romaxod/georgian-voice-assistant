@@ -49,10 +49,11 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
 
 ## Phase 2: Agentic architecture and voice (day 2)
 
-- [ ] **2.1 Rebuild the flow in LangGraph**
+- [x] 2026-10-03 **2.1 Rebuild the flow in LangGraph** *(`graph.py`)*
   - Do: state (messages, retrieved facts), nodes (understand → look up → answer), and edges.
   - Learn: state, nodes, edges, conditional routing, and how LangGraph runs a graph step by step.
   - Done when: the same questions as 1.4 work, and you can trace one request through every node out loud.
+  - Result: all 1.4 questions pass. The TV-packages question (skipped by the model in 1.4) now always goes through lookup, because the graph routes every ჯიხვი question there. Two things left for 2.2/3.1: that lookup returned unrelated entries (matched "პაკეტ"), and the answer said "no information" without offering a human operator.
 
 - [ ] **2.2 Clarify, hand off, and fail safely**
   - Do: add routes to ask a clarifying question when a request is ambiguous, to hand off to a human when unsure, and to handle tool errors. Add a step limit.

@@ -56,6 +56,16 @@ query -> split, strip, lowercase, drop stopwords, dedupe, cap 5 -> per word: exa
 1. One word has many case forms; exact match misses most of them. 2. Short stems match inside unrelated words ("m" in SIM/MB). 3. The topic is the entry's headline; body mentions are incidental, so they caused ties and wrong first results. 4. A real index, tokenizer, prefix queries, BM25 ranking; but MATCH has its own syntax so input must be quoted. 5. Share of the top k that is relevant; share of all relevant that made the top k. 6. Natural-language queries, synonyms, large corpus, or when measured recall on the labeled set is too low.
 </details>
 
+## Query rewriting for follow-ups *(added 2026-10-03)* *(short note)*
+
+**Problem:** `lookup_faq` only sees the words you give it. After "რა ღირს როუმინგი ევროპაში?", the follow-up "და რამდენ ხანს მოქმედებს?" has no roaming word in it, and after removing stopwords almost nothing is left to match. Searching with the raw follow-up finds nothing useful.
+
+- **Conversational query rewriting** (also "standalone question generation"): before searching, an LLM turns the latest message plus the chat history into a self-contained search query. It is a standard step in conversational RAG.
+- **In this repo (`graph.py`, step 2.1):** the `understand` node outputs `topic` with follow-ups resolved from history. Real runs: the first question gave `topic='როუმინგი ევროპა ფასი'`; the follow-up gave `'როუმინგი ევროპა ვადა'` and the answer was "7 დღე". The prompt tells it to output 2-4 keywords, not a sentence, which matches how `lookup_faq` scores (per word, stopwords dropped). See [LangChain chat models and structured output](2026-10-03-langchain-chat-models-structured-output.md).
+- **Cost and risk:** one extra LLM call per turn (about 1-2.5 s in our runs), and a bad rewrite poisons retrieval: wrong topic, wrong facts. Test it with follow-up cases in the labeled set (precision@k above), not only first questions.
+- **A precision problem it exposes:** "გაქვთ სატელევიზიო პაკეტები?" now always goes through lookup, which returned unrelated entries because it matched on "პაკეტ" (package) in other entries. The stem rule has no way to say "TV" is the important word. Fixes to try later: rank by rarity (BM25), require all rare words, or a minimum score, so "no good match" returns `[]` and the assistant offers an operator.
+- **Where to read:** LangChain's conversational RAG tutorial and "history-aware retriever" idea; search those terms (not opened for this note).
+
 ## 7. Ways to learn it (choose later)
 
 | Option | Good for | Time |

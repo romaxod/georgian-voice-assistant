@@ -497,3 +497,67 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `BUILD_PLAN.md`, `SETUP.md`, and `python3 .claude/hooks/code_docs.py` to refresh the code docs.
 - **How to explain it:** I only closed the step once real recordings were tested, because the synthetic round trip had looked better than real speech.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Rebuild the flow as a LangGraph router: understand → lookup → answer `[architecture]`
+- **Decision:** Step 2.1 rebuilt the assistant as a LangGraph graph in `graph.py` with three nodes. `understand` is an LLM call that sorts the question and picks keywords. `lookup` is plain Python with no LLM. `answer` is an LLM call that writes the reply. A conditional edge sends `faq` intents through `lookup` and `other` intents straight to `answer`.
+- **Why:** The graph routes every ჯიხვი question through lookup, so the model no longer decides whether to call the tool, as it did in 1.4's `chat.py`. The TV-packages question that 1.4 skipped now always goes through lookup. Other reasons are not stated in the excerpt.
+- **Alternatives:** Model-driven function calling, as in `chat.py` (1.4), is the implied alternative. No other options were discussed.
+- **How:** `graph.py` with `build_graph()`, `State`, and `python graph.py --draw` for the Mermaid diagram. → [docs](docs/code/graph.py.md). Packages: `langgraph` 1.2.12 and `langchain-openai` 1.6.7, added to `requirements.txt`.
+- **How to explain it:** I moved from letting the model decide when to call the tool to a workflow where the graph always does the lookup, so the behavior is predictable and I can trace every node.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `understand` uses structured output with a safe fallback `[code]`
+- **Decision:** `understand` calls `ChatOpenAI(model="gpt-5.4-mini").with_structured_output(Understanding, include_raw=True)`. `Understanding` is a Pydantic model with `intent: Literal["faq","other"]` and `topic: str`. The topic is 2–4 Georgian keywords, with follow-ups resolved from the history. If parsing fails (`parsed is None`), it falls back to intent `faq` with the raw question as the topic.
+- **Why:** The router needs a reliable intent label and search words. Follow-up questions such as "და რამდენ ხანს მოქმედებს?" need the earlier turns to be resolved. The reason for choosing the `faq` fallback is not stated.
+- **Alternatives:** none discussed.
+- **How:** `graph.py`, with `Understanding`, the `understand` node, and `MAX_TOPIC_CHARS = 200`. → [docs](docs/code/graph.py.md)
+- **How to explain it:** I use structured output so routing is a typed field instead of parsed text, and a parse failure defaults to searching the FAQ.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Memory moves to a LangGraph checkpointer (`InMemorySaver`) per `thread_id` `[architecture]`
+- **Decision:** The conversation is kept in the `messages` state key with the `add_messages` reducer, and an `InMemorySaver` checkpointer stores it per `thread_id`. This replaces the local `history` list that `chat.py` resent on every call. `/reset` starts a new thread. `cost` is accumulated in state with `operator.add`.
+- **Why:** The module docstring says "The conversation is kept by a checkpointer." Beyond that, the reasons are not stated.
+- **Alternatives:** The earlier approach was a local `history` list with `store=False`. It was not discussed as an alternative in this turn.
+- **How:** `graph.py`, with `State`, `InMemorySaver`, and the `/reset` command. → [docs](docs/code/graph.py.md)
+- **How to explain it:** Memory is handled by LangGraph checkpoints keyed by thread, so I can inspect each step's state and start fresh conversations by changing the thread id.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · On an API error, remove the unanswered question from the saved state `[code]`
+- **Decision:** Each user message gets its own `uuid` id. If the graph call fails, `graph.update_state` with `RemoveMessage(id=...)` deletes that question from the checkpoint.
+- **Why:** The checkpointer has already saved the question when the error happens, so without cleanup the next turn would see an unanswered message. The break test with a bad model name (HTTP 404) showed 1 message before cleanup and 0 after.
+- **Alternatives:** none discussed.
+- **How:** `graph.py`, in the chat loop's `except` branch. Tested by a scratchpad script, `break_api.py`. → [docs](docs/code/graph.py.md)
+- **How to explain it:** A failed call must not leave half a turn in memory, so I delete the orphaned message by id, and I proved it with a break test.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Lookup errors become state data, and the answer node tells the user honestly `[code]`
+- **Decision:** The `lookup` node catches exceptions and stores `lookup_error` in state instead of raising. `answer` then gets a "no facts or lookup failed" context and offers a human operator.
+- **Why:** The break test made `lookup_faq` raise `OperationalError("database is locked")`. The assistant answered that it had no exact information and offered an operator, and it did not make anything up.
+- **Alternatives:** none discussed.
+- **How:** `graph.py`, `lookup` node and `lookup_error` state key. Tested by a scratchpad script, `break_graph.py`. → [docs](docs/code/graph.py.md)
+- **How to explain it:** When the database fails, the graph records the error as data and the model says it can't answer, instead of crashing or guessing.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Known 2.1 weaknesses deferred to 2.2/3.1 `[process]`
+- **Decision:** Two issues were noted in `BUILD_PLAN.md` and left unfixed. The TV-packages lookup returned unrelated entries because it matched "პაკეტ". The "no information" answer did not offer a human operator.
+- **Why:** The checks passed overall, and the plan records these as items for 2.2 and 3.1. A further reason is not stated.
+- **Alternatives:** Fixing them now was not discussed.
+- **How:** The `Result:` line under step 2.1 in `BUILD_PLAN.md`.
+- **How to explain it:** I record known weaknesses in the plan and fix them in the step designed for it, so the evals can measure the improvement.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · `--draw` builds the graph with a placeholder API key so it needs no real key `[code]`
+- **Decision:** In `graph.py`, the `--draw` branch of `main()` now runs before `load_dotenv()`. It builds the graph with `ChatOpenAI(model=MODEL, api_key="unused")` and prints `get_graph().draw_mermaid()`.
+- **Why:** The tutor raised that `--draw` needed an API key even though drawing only reads the graph's wiring and makes no model call. Verified with `env -u OPENAI_API_KEY python graph.py --draw`, which printed the edges, and a normal chat run still worked afterwards.
+- **Alternatives:** none discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md) (`--draw` branch in `main`, placeholder `api_key="unused"`).
+- **How to explain it:** I made the diagram command run without credentials, because it only inspects the structure and never calls the model.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Use `langchain-openai` inside the LangGraph nodes instead of the raw OpenAI SDK `[tooling]`
+- **Decision:** The graph nodes call `ChatOpenAI(model="gpt-5.4-mini")` from `langchain-openai`, and `understand` uses `.with_structured_output(Understanding, include_raw=True)`. `langgraph` 1.2.12 and `langchain-openai` 1.6.7 are installed and frozen into `requirements.txt`. `chat.py` still uses the raw SDK and was left as it was.
+- **Why:** Stated in the final report: it is what LangGraph code normally uses, messages work with the `add_messages` reducer, and `with_structured_output` is built in. The stated cost is one extra layer and more dependencies.
+- **Alternatives:** The raw OpenAI SDK inside the nodes, which is what `chat.py` uses. It was rejected for the reasons above.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md); `requirements.txt` (pinned via `pip freeze`); `chat.py` kept for comparison with 1.4.
+- **How to explain it:** I used LangChain's chat model inside LangGraph because it plugs into the message reducer and gives structured output out of the box. In exchange I accepted an extra abstraction layer.
+- **Decided by:** Claude (unconfirmed)
