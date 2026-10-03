@@ -107,3 +107,24 @@ STT errors on English terms flow into the LLM; the LLM can often still guess "AP
 - Overview of the field (survey, appeared in search, not read in full): https://arxiv.org/pdf/2507.07741
 
 **D. Video:** I searched for WER and code-switching videos and the results were articles and papers, so I couldn't confirm any specific video or course. Search terms: "word error rate explained", "code-switching speech recognition lecture".
+
+---
+
+## 8. Step 1.5 measurements: a synthetic round trip *(added 2026-10-03)* *(short note)*
+
+Observed 2026-10-03 with Azure STT and the Giorgi voice (`speech_smoke.py`). The same table is in SETUP.md §2 "Step 1.5 results".
+
+**Method: synthetic round trip.** Generate audio with TTS from a known text, then run it through STT and compare the result to the original. It needs no microphone and is repeatable, so it works as a first proxy test. **Limit:** it tests *both* directions at once. If a word comes back wrong, you can't tell whether TTS pronounced it badly or STT misheard it (and TTS and STT may share blind spots, so a clean pass is flattering). Real mic recordings are the final test.
+
+| Sent to TTS | STT returned |
+|---|---|
+| pure Georgian sentences | exact |
+| API-ს key როგორ შევცვალო? | დეფის კი როგორ შევცვალო? |
+| iPhone-ზე | ეს ფონზე |
+| eSIM-ის QR კოდი email-ზე მომივა? | ისე მის კარგ კოდი მეილზე მომივა. |
+| ჯიხვის (a pure Georgian word) | ტალახის, once |
+| QR | dropped, twice |
+
+- Pure Georgian is fine; every failure is a Latin-script word, which matches the G2P and one-language-model explanation above. English words don't come back as English ("email" became "მეილზე", Georgian spelling) so any WER or keyword check must decide how to treat that.
+- **Hypothesis (to confirm by ear):** "API-ს" became "დეფის" ("დეფისი" is Georgian for *hyphen*), so the Georgian voice may read the `-` aloud. If so, the hyphen in `API-ს` hurts TTS and STT in this test; a fix would be to write the suffix attached differently or use the speech-text step. Not confirmed.
+- **Implication for step 2.5:** the speech-text step (rewriting English terms and hyphens before TTS) is worth building and testing, and the demo sentences should avoid unverified terms. Run the same table again after adding it to see the effect.

@@ -59,6 +59,17 @@ chat.lookup_faq = broken      # works
 - Equivalent in a test framework: `unittest.mock.patch("chat.lookup_faq", side_effect=sqlite3.OperationalError("boom"))` used as a `with` block or decorator; it restores the original afterwards (plain assignment doesn't). Docs: <https://docs.python.org/3/library/unittest.mock.html#where-to-patch> (section "Where to patch"; I did not open this page, it is from memory of the docs structure, so check it).
 - Used in step 1.4 to show the model receives `{"error": ...}` and answers honestly ([function calling note](2026-10-03-function-calling-responses-api.md)).
 
+## 7. From `speech_smoke.py` *(added 2026-10-03)*
+
+Checked against the `argparse`, `threading`, `time` and `wave` docs (threading.Event page opened) and by running the script.
+
+- **Subcommands:** `commands = parser.add_subparsers(dest="command", required=True)`, then `rec = commands.add_parser("record", help=...)` and `rec.add_argument(...)` per command, like `git commit`. `dest="command"` stores the chosen name in `args.command`; `required=True` makes a missing subcommand an error (otherwise it is `None`). Each subparser has its own options and `--help`.
+- **Nested functions as callbacks (closures):** `on_recognized` is defined inside `transcribe` and uses the local list `parts`. An inner function can *read* and *mutate* outer variables; `parts.append(x)` mutates the list, so no `nonlocal` is needed. Writing `parts = []` inside it would create a new local instead, and rebinding an outer name needs `nonlocal parts`. The SDK later calls the function from another thread, and it still sees `parts`.
+- **`threading.Event`:** a flag shared between threads. `done.set()` raises it; `done.wait(timeout=30)` blocks until set and returns `True`, or `False` if the timeout passed first. Used to let the main thread sleep until the SDK's `session_stopped` callback fires.
+- **`time.perf_counter()`:** a high-resolution clock for timing; only differences are meaningful (`end - start`). `time.time()` is wall-clock and can jump.
+- **`wave` module:** `with wave.open(path, "rb") as w:` then `getframerate()` (Hz), `getsampwidth()` (bytes per sample), `getnchannels()`, `getnframes()`, `readframes(n)` (bytes). Duration = `getnframes() / getframerate()`; e.g. 88,000 frames at 16 kHz = 5.5 s.
+- **`array("h", bytes)`:** `from array import array` turns raw bytes into a compact array of signed 16-bit ints (`"h"`), so `max(map(abs, samples))` finds the loudest sample. It uses your machine's byte order (little-endian here, matching WAV).
+
 ## Sources
 
 - Python tutorial, Errors and Exceptions (8.3 Handling Exceptions covers multiple exceptions): <https://docs.python.org/3/tutorial/errors.html>

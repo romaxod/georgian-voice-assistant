@@ -115,3 +115,81 @@ mic -> WAV 16 kHz mono -> SpeechRecognizer -> text -> LLM -> text -> SpeechSynth
 - Hands-on module (from search, not read in full): https://learn.microsoft.com/training/modules/create-speech-enabled-apps
 
 **D. Video:** I did not search for or confirm a specific video for this note. Search terms: "Azure Speech SDK Python quickstart", "sample rate bit depth PCM WAV explained". If you want one, ask for a verified pick.
+
+---
+
+## 8. Speech SDK in practice (step 1.5) *(added 2026-10-03)*
+
+Observed 2026-10-03 on WSL2, Python 3.14, `azure-cognitiveservices-speech` 1.52.0, Azure F0 in `italynorth`. Checked against the Microsoft Learn "how to recognize speech" page, the `CancellationDetails` API page and the Azure-Samples Python console samples. The code is `speech_smoke.py`; line-by-line in `docs/code/speech_smoke.py.md`.
+
+**Problem.** A smoke test that "works" can still hide the first sentence of a recording, swallow an error, or fail for a reason that has nothing to do with your code. These are the traps we actually hit.
+
+**`recognize_once()` vs continuous recognition**
+- `recognize_once()` returns after the **first utterance** (silence at the end, or at most 15 s of audio per the how-to page). On a 5.5 s file with two sentences it returned only `Გამარჯობათ ჯიხვის ცხელი ხაზია.` and silently dropped the second.
+- `start_continuous_recognition()` keeps going until the audio ends or you stop it. The same file gave **2 utterances** (two `recognized` events). `speech_smoke.py` joins the parts with a space.
+- You can't switch modes on one recognizer: calling `recognize_once` after continuous mode raised `RuntimeError` containing `SPXERR_SWITCH_MODE_NOT_ALLOWED (0x1e)` and a long C++ call stack. Make a new `SpeechRecognizer` per mode.
+
+**The event model.** Continuous recognition is callback-based: you `connect` a function to each event and the SDK calls it from **its own thread**.
+- `session_started` / `session_stopped`: the audio session opened / closed. `recognizing`: interim text. `recognized`: a final utterance (`evt.result.reason`, `evt.result.text`). `canceled`: the session ended early *or* ended normally (below).
+- The main thread has to wait. We use a `threading.Event`: `session_stopped` calls `done.set()`, the main thread calls `done.wait(timeout=duration + 30)` (returns `False` on timeout, a safety net), then `stop_continuous_recognition()`.
+
+**Exceptions inside callbacks are swallowed.** The real bug from the break test: the `canceled` handler read `evt.reason`, but a canceled event has no `reason`; it's `evt.cancellation_details.reason`. The `AttributeError` happened on the SDK thread and **nothing was printed**. With a wrong key the script said "No speech recognized" instead of an authentication error. Rule: keep callbacks tiny (append to a list, set an event) and do the real work on the main thread after `wait()`. Timeline with the wrong key: `session_started` at 0.00 s, `canceled` 0.23 s, `session_stopped` 0.23 s. You'd see this only by logging each event.
+
+**`canceled` is not always an error.** It also fires with `CancellationReason.EndOfStream` when a file simply ends. Only `CancellationReason.Error` is a failure; then read `cancellation_details.error_details` and the code.
+- SDK inconsistency: recognition `CancellationDetails` has `.code`; synthesis `SpeechSynthesisCancellationDetails` has `.error_code` (I checked both with `dir()`). `explain_cancel` handles both with `hasattr`.
+
+**TTS to a file**
+- `SpeechSynthesizer(speech_config=..., audio_config=None)` doesn't open a speaker; the bytes are in `result.audio_data`. The default would open the default speaker through ALSA, which doesn't exist in WSL (see [audio on Linux and WSL](2026-10-03-audio-on-linux-and-wsl.md)).
+- `SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm`: "Riff" formats include the 44-byte WAV header, so `Path.write_bytes(result.audio_data)` gives a valid `.wav`. A raw-PCM format would need a header added.
+
+**Break tests and their output**
+| Change | Result |
+|---|---|
+| wrong key | `AuthenticationFailure: WebSocket upgrade failed: Authentication error (401)` |
+| region `nowhere` | `ConnectionFailure ... DNS resolution failed ... wss://nowhere.stt.speech.microsoft.com/...` |
+| region `westus` with the italynorth key | still 401 |
+- The region is part of the **hostname** (`<region>.stt.speech.microsoft.com`), so a nonsense region fails at DNS. A real but wrong region reaches a server that doesn't know your key: keys are region-scoped ([Azure basics](2026-10-02-azure-basics.md)).
+
+**Measured (F0, italynorth):** TTS 0.8-1.8 s per sentence; STT 1.0-2.0 s for 5-6 s of file audio. Files are processed faster than real time; a live mic would take as long as you speak plus the silence timeout. Step 2.5 should time each stage separately.
+
+**Exercises**
+1. Add `recognizer.session_started.connect(...)`, `recognizing`, `recognized`, `canceled`, `session_stopped` handlers that each print `time.perf_counter() - start` and the event name. Check: for a 2-sentence file you see `recognizing` lines before each `recognized`, and `canceled` (EndOfStream) just before `session_stopped`.
+2. Record two sentences with a pause (`python speech_smoke.py record two --seconds 6`). Write a throwaway script using `recognize_once_async().get()` on it. Check: only the first sentence; then run `stt` and compare.
+3. In one handler write `1/0`. Check: nothing is printed and the script carries on. Then wrap the body in `try/except Exception: traceback.print_exc()` and see the error appear.
+4. Set a wrong `AZURE_SPEECH_KEY` for one command (`AZURE_SPEECH_KEY=x python speech_smoke.py stt audio/q1.wav`; `load_dotenv` doesn't override, see [env vars](2026-10-02-env-vars-and-dotenv.md)). Check: the 401 message and the 0.2 s timeline.
+5. Run `tts` once for a short and once for a long sentence with `--no-play`. Check: time barely grows; file size grows (24 kHz x 2 bytes = 48,000 bytes per second).
+
+**Self-check**
+1. Why did `recognize_once` return half the recording?
+2. Where does a callback run, and what happens to an exception raised in it?
+3. Is every `canceled` event a failure?
+4. Why `audio_config=None` for TTS in WSL, and why can the bytes go straight into a `.wav`?
+5. Why does region `westus` give 401 but `nowhere` gives a DNS error?
+
+<details><summary>Answers</summary>
+
+1. It stops after the first utterance; continuous recognition fires `recognized` per utterance until the audio ends.
+2. On an SDK thread; the exception is swallowed with no message. Keep callbacks tiny and check results on the main thread.
+3. No: `EndOfStream` is normal. Only `CancellationReason.Error` is.
+4. Default output opens a speaker via ALSA, which WSL lacks; a Riff format output includes the WAV header.
+5. The region is a hostname part: `nowhere` doesn't resolve; `westus` resolves but doesn't know your region-scoped key.
+</details>
+
+**Ways to learn it (choose later)**
+
+| Option | Good for | Time |
+|---|---|---|
+| A. Claude walks you through | Exercises 1-5 on your own `speech_smoke.py` | About 1 hr |
+| B. Another AI tutor | Event model and threading explained from the docs | 45 min |
+| C. Primary docs | Exact event and class names | 1 hr |
+| D. Course | Microsoft's free training module | 1-2 hr |
+
+- **A. Prompt:** > Walk me through section 8 of learning/notes/2026-10-02-how-speech-services-work.md using speech_smoke.py. Do exercises 1-5 one at a time (run, show output, have me explain), then quiz me on the self-check.
+- **B. Prompt** (NotebookLM or ChatGPT/Gemini): > Using only these sources, explain continuous vs single-shot recognition in the Azure Speech SDK for Python, which events fire and in what order, and how to handle cancellation. Then give a 5-question quiz. Sources: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python, https://learn.microsoft.com/en-us/python/api/azure-cognitiveservices-speech/azure.cognitiveservices.speech.cancellationdetails, https://github.com/Azure-Samples/cognitive-services-speech-sdk/tree/master/samples/python/console, https://docs.python.org/3/library/threading.html#event-objects
+- **C. Docs (opened 2026-10-03):**
+  - [How to recognize speech (Python)](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python): continuous recognition section, events, 15 s single-shot limit, error handling.
+  - [CancellationDetails API](https://learn.microsoft.com/en-us/python/api/azure-cognitiveservices-speech/azure.cognitiveservices.speech.cancellationdetails): the `code`, `error_details`, `reason` attributes (the page lists no descriptions).
+  - [SpeechRecognizer API](https://learn.microsoft.com/en-us/python/api/azure-cognitiveservices-speech/azure.cognitiveservices.speech.speechrecognizer): appeared in search results, not read in full.
+  - [Azure-Samples Python console samples](https://github.com/Azure-Samples/cognitive-services-speech-sdk/tree/master/samples/python/console): `speech_sample.py` has `speech_recognize_continuous_from_file()` with the session_stopped/canceled pattern; `speech_synthesis_sample.py` for TTS.
+  - [threading.Event](https://docs.python.org/3/library/threading.html#event-objects): `set`, `wait(timeout)` returns `True`/`False`.
+- **D. Course:** Microsoft Learn, ["Fundamentals of Azure AI Speech"](https://learn.microsoft.com/en-us/training/modules/recognize-synthesize-speech/) (free module; found in search, I didn't take it). I couldn't confirm a specific YouTube video with creator and link for the Python Speech SDK; search terms: "Azure Speech SDK Python continuous recognition".

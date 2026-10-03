@@ -89,6 +89,41 @@ Georgian speakers, especially developers, mix in English words ("API-ს key რ
   - OpenAI `gpt-transcribe` takes `languages`, `keywords`, and `prompt` hints ([docs](https://developers.openai.com/api/docs/guides/speech-to-text)), but Georgian isn't explicitly confirmed there.
   - None of the three documents mid-sentence code-switching, so **measure it** (BUILD_PLAN 1.5, 3.1, 3.4).
 
+### Step 1.5 results (2026-10-03, `speech_smoke.py`)
+
+**Synthetic round trip** (Giorgi reads the sentence with TTS, then Azure STT transcribes the file). This is a proxy that needs no microphone. It tests both directions at once, so it can't say which side broke a word:
+
+| Sentence | Transcript |
+|---|---|
+| რა ღირს როუმინგი ევროპაში? | რა ღირს როუმინგი ევროპაში? (exact) |
+| API-ს key როგორ შევცვალო? | **დეფის კი** როგორ შევცვალო? |
+| როუმინგი როგორ ჩავრთო iPhone-ზე? | როუმინგი როგორ ჩავრთო **ეს ფონზე**? |
+| eSIM-ის QR კოდი email-ზე მომივა? | **ისე მის კარგ** კოდი **მეილზე** მომივა. |
+| eSIM-ის გასააქტიურებლად გახსენით ჯიხვის აპლიკაცია და დაასკანერეთ QR კოდი. | **იზი მის** გასააქტიურებლად გახსენით **ტალახის** აპლიკაცია და დაასკანირეთ კოდი. |
+
+- Pure Georgian survives exactly. Every English word breaks, and `QR` disappeared twice.
+- `API-ს` → `დეფის` suggests TTS **reads the hyphen aloud as "დეფისი"** (the Georgian word for hyphen). Confirm by ear: `python speech_smoke.py play audio/synth_2.wav`. If it's true, the speech-text step in 2.5 must at least drop the hyphen in "API-ს"-style suffixes.
+- Azure STT capitalizes the first letter of a sentence with a **Mtavruli** capital (`Გ`, U+1C92) instead of `გ`. `speech_smoke.py` maps them back (`to_mkhedruli`), because a capital would break keyword search and eval string comparisons.
+- `recognize_once()` stops after the first sentence. The script uses continuous recognition instead.
+- Speed: TTS 0.8–1.8 s per sentence, STT 1.0–2.0 s for 5–6 s of audio (F0, italynorth).
+
+**TTS by ear** (Roman, Giorgi reading `reply.wav`): Georgian is fine, but English words are "rough". Giorgi reads them **as if they were Georgian letters, run together**: "eSIM" ≈ "ისიმ", "QR" ≈ "ქრ" instead of "ქიუარ". So Azure's Georgian voices have no English pronunciation at all. The "დეფისი for the hyphen" guess wasn't confirmed by ear.
+
+**STT of Roman's own voice** (16 kHz mono, peak level 7–16%):
+
+| File | Said | Transcript |
+|---|---|---|
+| q1 | რა ღირს როუმინგი ევროპაში? | რა ღირს **რომ მინი** ევროპაში. |
+| c1 | API-ს key როგორ შევცვალო? | **ვი პი აის ქე რო გორ.** შევცვალო. |
+| c2 | (second take of c1) | **იფ იანის ქე** როგორ **შორს ხარ**? |
+| c3 | როუმინგი როგორ ჩავრთო iPhone-ზე? | როუმინგი როგორ **ჩართა იფანსი**? |
+| c4 | eSIM-ის QR კოდი email-ზე მომივა? | **ისინი სქი ვარკვევდი** მეილზე მომივა. |
+
+**What this means for the build:**
+- **STT:** every English word failed, even when a native speaker said it. Even the loanword "როუმინგი" failed once ("რომ მინი"), and that would make `lookup_faq` miss the roaming entries. Trying ElevenLabs Scribe v2 with keyterms (step 2.6a) is now clearly worth it, and Phase 3 needs code-switched eval cases.
+- **TTS:** the speech-text step in 2.5 is required. It needs to spell English terms in Georgian script as they're pronounced (QR → ქიუარ, eSIM → ი-სიმ, API → ეი-პი-აი), either directly or with SSML `<sub>`.
+- Synthetic round trips were kinder than real speech (q1 was exact when Giorgi said it). Test with real recordings, not only TTS output.
+
 ---
 
 ## 3. pyenv and virtual environments (learning material)

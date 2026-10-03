@@ -14,3 +14,4 @@ One doc per code file, explaining every part of it. Written automatically by the
 | [`data/faq.json`](data/faq.json.md) | The FAQ knowledge base for the fictional Georgian operator "ჯიხვი" (Jikhvi): 20 question/answer entries about plans, roaming, SIM cards, payments and branches, stored as JSON. |
 | [`faq.py`](faq.py.md) | Stores the ჯიხვი FAQ in a SQLite database built from `data/faq.json`, and provides `lookup_faq(topic)`, which finds the best-matching entries by simple word and stem scoring. |
 | [`first_call.py`](first_call.py.md) | A one-shot script that sends one Georgian question to OpenAI's Responses API with `gpt-5.4-mini`, prints the answer, and prints the token counts and the cost of the call. |
+| [`speech_smoke.py`](speech_smoke.py.md) | A command-line smoke test for Azure Speech in Georgian that records from the microphone, transcribes a WAV file (STT), synthesizes a reply to a WAV file (TTS) and plays WAV files, all from WSL. |

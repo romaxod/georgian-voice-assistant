@@ -401,3 +401,99 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** Noted in the turn summary. No file change.
 - **How to explain it:** "I found a case where the model skips grounding, left it unfixed on purpose, and turned it into an eval case."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Audio via files, recorded and played with `pasimple` (PulseAudio) `[tooling]`
+- **Decision:** Record and play audio through WAV files using `pasimple`, a wrapper over libpulse-simple, instead of the Speech SDK's own mic/speaker.
+- **Why:** The Speech SDK opens audio through ALSA, which WSL doesn't connect to Windows. WSLg runs a PulseAudio server at `$PULSE_SERVER`, and `libpulse-simple` is already installed. There is no `sudo` without a password.
+- **Alternatives:** `sounddevice` needs PortAudio (not installed, would need `sudo apt install`). The SDK's own mic/speaker would need an ALSA plugin, also needing `sudo`.
+- **How:** `speech_smoke.py` (`record`, `play`), `pasimple` added to `requirements.txt` → [docs](docs/code/speech_smoke.py.md)
+- **How to explain it:** I looked at what the WSL environment actually provided, then picked the audio path that needed no system changes.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Continuous recognition instead of `recognize_once()` for STT `[code]`
+- **Decision:** `transcribe()` uses `start_continuous_recognition()` with `recognized`, `canceled` and `session_stopped` callbacks and a `threading.Event` wait.
+- **Why:** Tested on a 2-sentence 5.5 s file: `recognize_once()` returned only the first sentence, while continuous recognition returned both.
+- **Alternatives:** `recognize_once()`, rejected because it stops at the first pause.
+- **How:** `transcribe()` in `speech_smoke.py` → [docs](docs/code/speech_smoke.py.md)
+- **How to explain it:** I tested both modes on a multi-sentence clip, and only continuous recognition returned the whole utterance.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Map Azure's Mtavruli capitals back to Mkhedruli with `to_mkhedruli` `[code]`
+- **Decision:** Translate code points U+1C90–U+1CBF back to U+10D0–U+10FF (offset 0xBC0) in STT output, via the `MTAVRULI_TO_MKHEDRULI` table.
+- **Why:** Azure capitalizes the first letter of each sentence with a Mtavruli capital (`Გ`, U+1C92), and `Გამარჯობა` != `გამარჯობა` would break keyword search and eval comparisons.
+- **Alternatives:** `.lower()` was rejected because it would also lowercase English words like "QR" and "API". The excerpt doesn't show that `.lower()` was tried on the whole transcript; the check run on the string showed it works on Georgian letters.
+- **How:** `to_mkhedruli()` and `MTAVRULI_TO_MKHEDRULI` in `speech_smoke.py` → [docs](docs/code/speech_smoke.py.md)
+- **How to explain it:** Azure returns Georgian capitals that look like normal text but compare unequal, so I normalized them at the STT boundary.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · STT error handling: callbacks as named functions, `code` vs `error_code` handled in `explain_cancel` `[code]`
+- **Decision:** The `canceled` handler checks `evt.cancellation_details.reason` instead of `evt.reason`. `explain_cancel` reads `details.code` when present, else `details.error_code`. Callbacks are written as named functions with a comment that the SDK swallows exceptions in them.
+- **Why:** The break test with a wrong key printed "No speech recognized". The SDK swallowed the `AttributeError` from `evt.reason`, which doesn't exist on that event. Recognition cancellation details use `.code`, while synthesis ones use `.error_code`.
+- **Alternatives:** none discussed.
+- **How:** `on_canceled`, `on_recognized`, `explain_cancel` in `speech_smoke.py` → [docs](docs/code/speech_smoke.py.md)
+- **How to explain it:** A break test showed a misleading error, and tracing it led me to the SDK swallowing callback exceptions.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Synthetic TTS→STT round trip as a proxy before Roman's real recordings `[process]`
+- **Decision:** Test code-switching first by having Giorgi read four test sentences and transcribing them back. Step 1.5 stays `[~]` until Roman records the same sentences himself.
+- **Why:** It needs no microphone. It's only a proxy: it tests both directions at once, so it can't say which side broke a word. Result: pure Georgian exact, every English word broke, and `QR` disappeared twice.
+- **Alternatives:** Roman's real voice is named as the actual test, and it is still pending.
+- **How:** Results table in `SETUP.md` §2 "Step 1.5 results"; `speech_smoke.py tts` and `stt`.
+- **How to explain it:** I measured code-switching with a synthetic round trip first, and was clear that real voice recordings were still the real test.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Recording prints its peak level and warns when it is almost silent `[code]`
+- **Decision:** After `record`, the script reads the WAV back and prints the loudest sample as a fraction of full scale. If the peak is below 0.02 (2%), it warns that the recording is almost silent and points to the Windows microphone privacy setting.
+- **Why:** A silent recording would otherwise reach STT and come back as "No speech recognized", which looks like an STT problem. The warning names the likely cause: WSL can't reach the microphone until Windows allows desktop apps to use it. The 0.02 threshold has no stated reason.
+- **Alternatives:** none discussed.
+- **How:** `speech_smoke.py` → [docs](docs/code/speech_smoke.py.md), end of the record function, using `array("h", ...)` over the WAV frames.
+- **How to explain it:** "I made the recorder report its own signal level, so a muted or blocked microphone gets caught at the recording step and doesn't look like a recognition failure."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Step 1.5 marked in progress, not done, until Roman's real recordings `[process]`
+- **Decision:** In `BUILD_PLAN.md`, step 1.5 is set to `[~]`. Git commands are held back until Roman has run the listening and recording checks and sent the transcripts. The SETUP.md results section has blanks for his results.
+- **Why:** The synthetic round trip is only a proxy. Roman's real voice and ears are the actual test, and the hyphen-read-aloud guess ("დეფისი") needs confirming by ear. Claude says it can only test its own side.
+- **Alternatives:** none discussed.
+- **How:** `BUILD_PLAN.md` line "1.5 Georgian speech smoke test"; "Step 1.5 results" section in `SETUP.md` §2.
+- **How to explain it:** "I don't call a speech step done on synthetic audio alone. It stays in progress until it's tested with a real human voice."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · STT language fixed to `ka-GE`, no auto-detect `[code]`
+- **Decision:** The recognizer is set to `speech_recognition_language = "ka-GE"`, with no language auto-detection.
+- **Why:** The code comment says auto-detect "can't switch mid-sentence anyway", so it wouldn't help with Georgian sentences that contain English words. SETUP.md also notes that mid-sentence code-switching is undocumented, which is why it is measured in step 1.5.
+- **Alternatives:** Auto-detect was considered and rejected for the reason above.
+- **How:** `LANGUAGE` constant and `transcribe` in `speech_smoke.py` → [docs](docs/code/speech_smoke.py.md).
+- **How to explain it:** "Auto-detect picks one language per utterance. My users mix Georgian and English in one sentence, so I fixed the language to Georgian and measured how the English words break."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Ctrl-C during recording prints a one-line message instead of a traceback `[code]`
+- **Decision:** In `record()`, wrap `pasimple.record_wav` in `try/except KeyboardInterrupt` and call `sys.exit("\nRecording cancelled; nothing was saved.")`.
+- **Why:** Roman's Ctrl-C during a recording produced a long traceback. `pasimple` writes the file only after reading all the audio, so no partial file is left, and the message says so. Break test: `timeout -s INT 1 ... record brk --seconds 5` printed the message and left no `audio/brk.wav`.
+- **Alternatives:** none discussed.
+- **How:** `speech_smoke.py` (`record`) → [docs](docs/code/speech_smoke.py.md). Tested with the `timeout -s INT` command above.
+- **How to explain it:** I handle user interrupts explicitly, and I checked that a cancelled recording leaves no half-written file.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Speech-text step in 2.5 made required: English terms spelled in Georgian script before TTS `[scope]`
+- **Decision:** Step 2.5's speech-text step changes from "if needed" to required. It will spell English terms the way they are pronounced (QR → ქიუარ, eSIM → ი-სიმ, API → ეი-პი-აი), either directly or with SSML `<sub>`.
+- **Why:** Roman listened to `reply.wav`. Giorgi (`ka-GE-GiorgiNeural`) reads English words as run-together Georgian letters ("QR" ≈ "ქრ", "eSIM" ≈ "ისიმ"), so Azure's Georgian voices have no English pronunciation.
+- **Alternatives:** Direct Georgian-script respelling or SSML `<sub>`. Which one to use is not decided yet.
+- **How:** `BUILD_PLAN.md` step 2.5 and the "Changes to the plan" line. Evidence is in `SETUP.md` §2.
+- **How to explain it:** I tested TTS on mixed-language text by ear. It failed on English words, so I added a required step that respells them in Georgian script.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · ElevenLabs Scribe v2 with keyterms confirmed as a step to try (2.6a) after Azure STT failed on English words `[scope]`
+- **Decision:** Step 2.6a, testing ElevenLabs Scribe v2 with keyterms, changes from conditional to confirmed worth doing. Phase 3 will also need code-switched eval cases.
+- **Why:** In Roman's own recordings, Azure STT failed on every English word (`API-ს key` → `ვი პი აის ქე`, `iPhone-ზე` → `იფანსი`, `eSIM-ის QR` → `ისინი სქი`). It also failed once on the loanword `როუმინგი` (→ `რომ მინი`), which would make `lookup_faq` miss the roaming entries. Synthetic TTS→STT round trips were kinder than real speech.
+- **Alternatives:** Keep Azure STT only. Not stated why this was ruled out beyond the failures above.
+- **How:** `BUILD_PLAN.md` step 2.6a and the "Changes to the plan" line. Results are in the `SETUP.md` §2 table.
+- **How to explain it:** Azure STT failed on English words in my real recordings, so I'm benchmarking ElevenLabs Scribe v2 with keyterms as an alternative.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Step 1.5 marked done, with the findings recorded in `SETUP.md` `[process]`
+- **Decision:** Step 1.5 changes from `[~]` to `[x] 2026-10-03`. Roman's recordings (q1, c1–c4) and by-ear TTS results go into a table in `SETUP.md` §2, and the "Changes to the plan" line in `BUILD_PLAN.md` records the plan changes.
+- **Why:** The earlier entry marked 1.5 in progress until Roman's real recordings. Those recordings are now made and the results written down. This closes that condition and does not reverse it.
+- **Alternatives:** none discussed.
+- **How:** `BUILD_PLAN.md`, `SETUP.md`, and `python3 .claude/hooks/code_docs.py` to refresh the code docs.
+- **How to explain it:** I only closed the step once real recordings were tested, because the synthetic round trip had looked better than real speech.
+- **Decided by:** Claude (unconfirmed)
