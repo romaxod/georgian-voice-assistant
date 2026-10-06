@@ -225,9 +225,10 @@ Whatever you choose, finish with the exercises and the self-check.
 
 Changing one thing per stage means that when something sounds worse, you know which change caused it.
 
-### Facts (checked 2026-10-02)
+### Facts (checked 2026-10-02; models and prices re-checked 2026-10-04)
 
-- Georgian is listed for `eleven_v3`, `eleven_v4` and the low-latency `eleven_v4_turbo`. It is **not** listed for `eleven_multilingual_v2` or `eleven_flash_v2_5`. ([models docs](https://elevenlabs.io/docs/overview/models))
+- Georgian is listed for `eleven_v4`, the low-latency `eleven_v4_turbo` and `eleven_v3` (re-checked 2026-10-04). It is **not** listed for `eleven_multilingual_v2` (the API's default model, so the code always sends `model_id`) or `eleven_flash_v2_5`. The code uses `eleven_v4_turbo` by default (~100 ms model latency, half v4's price); set `ELEVENLABS_MODEL=eleven_v4` to compare. ([models docs](https://elevenlabs.io/docs/overview/models))
+- STT: `scribe_v2` lists Georgian (`kat`) in its 5–10% WER tier. Keyterms cost extra. API prices on 2026-10-04: v4 Turbo $0.011 and v4 $0.022 per 1K characters (72% off until October 12; regular $0.04 / $0.08), Scribe v2 $0.22 per hour ([API pricing](https://elevenlabs.io/pricing/api)). The page doesn't say how much free credit the Free plan includes; your account's usage page does.
 - Instant Voice Cloning needs the **Starter** plan or higher, about $5–6/month by recent third-party summaries ([summary](https://magichour.ai/blog/elevenlabs-pricing)). Check the price on <https://elevenlabs.io/pricing> when you sign up. Professional cloning ($22+, 30+ minutes of studio audio) is overkill here.
 - ElevenLabs recommends recording the clone **in the language you'll use it in**, so record in Georgian.
 - The free plan may be enough for stage 2 (a ready-made voice). Check whether it includes API access to the Georgian-capable models before paying.
@@ -236,18 +237,19 @@ Changing one thing per stage means that when something sounds worse, you know wh
 
 **Stage 2: ready-made voice**
 1. Sign up at <https://elevenlabs.io> with a personal account.
-2. In the voice library, pick a voice and try a Georgian sentence with a Georgian-capable model (`eleven_v4` or `eleven_v3`). Use the same test sentence as SETUP.md §2.
-3. Profile → API keys: create a key, then add `ELEVENLABS_API_KEY=...` and `ELEVENLABS_VOICE_ID=<the ready-made voice's ID>` to `.env`.
+2. In the voice library, pick a voice and try a Georgian sentence with `eleven_v4` or `eleven_v4_turbo`. Use the same test sentence as SETUP.md §2. **Pick a male voice**: Azure's Giorgi is male, so a female voice would give the provider away in the blind rating.
+3. Profile → API keys: create a key, then add `ELEVENLABS_API_KEY=...` and `ELEVENLABS_VOICE_ID=<the ready-made voice's ID>` to `.env`. Confirmed 2026-10-06: the Free plan can't use **library** voices over the API (`HTTP 402 payment_required: Free users cannot use library voices via the API`). Use one of the ~21 **premade** voices (Brian, Eric, Daniel, Chris, ...). They speak Georgian through `eleven_v4*` even though none is a Georgian native voice; the voice library has no Georgian-native voices at all.
+4. Optional lines in `.env` (step 2.6a code): `TTS_PROVIDER=elevenlabs` and/or `STT_PROVIDER=elevenlabs` make the voice loop use ElevenLabs by default (Azure is the fallback either way), and `ELEVENLABS_MODEL=eleven_v4` switches the TTS model.
 
 **Stage 3: your voice**
-4. Upgrade to Starter if the free plan doesn't include cloning.
-5. **Record about 2 minutes** of natural Georgian:
+5. Upgrade to Starter if the free plan doesn't include cloning.
+6. **Record about 2 minutes** of natural Georgian:
    - Use a quiet room with no echo, and the same mic and distance throughout.
    - Speak in the tone the assistant should have: friendly and calm, not reading-aloud stiff.
    - Avoid background music, other voices, and long silences.
    - Save it as WAV or high-quality MP3. Keep the file **out of the repo**, since `audio/` is gitignored.
-6. Voices → Add voice → **Instant Voice Clone**: upload the file and confirm you have the right to clone this voice (it's yours).
-7. Copy the new voice ID and change `ELEVENLABS_VOICE_ID` in `.env`. Keep the ready-made voice's ID in a comment, so you can compare the two.
+7. Voices → Add voice → **Instant Voice Clone**: upload the file and confirm you have the right to clone this voice (it's yours).
+8. Copy the new voice ID and change `ELEVENLABS_VOICE_ID` in `.env`. Keep the ready-made voice's ID in a comment, so you can compare the two.
 
 **Rules**
 - Never commit or share the API key or the voice ID. A clone of your voice is a security risk; banks deal with voice-fraud deepfakes.

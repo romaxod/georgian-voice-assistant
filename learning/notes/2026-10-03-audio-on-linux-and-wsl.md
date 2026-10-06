@@ -99,3 +99,16 @@ Azure SDK default -> libasound (ALSA) -> no card in WSL   (needs the pulse plugi
   - [Python ctypes](https://docs.python.org/3/library/ctypes.html): "Loading shared libraries", "Specifying prototypes".
   - Not opened (blocked): ArchWiki "Advanced Linux Sound Architecture" and "PulseAudio" pages; usually good, try them in a browser.
 - **D. Video:** a search surfaced a video titled "Linux Audio Explained (ALSA vs PulseAudio vs JACK vs Pipewire Explained)" (covers hardware, ALSA/OSS, PulseAudio/JACK, PipeWire) but only on a mirror site, and I couldn't confirm the creator or an official link. Search that title on YouTube. A text alternative from search results: ["The Linux audio stack demystified"](https://unixism.net/2024/07/the-linux-audio-stack-demystified/) (not read).
+
+---
+
+## 8. Raw PCM vs a WAV file: ElevenLabs `pcm_24000` *(added 2026-10-04)* *(short note)*
+
+**Problem:** ElevenLabs' `output_format=pcm_24000` returns bytes that no player recognizes as a file.
+
+- **Raw PCM** is just the samples: 16-bit little-endian signed integers, mono, 24,000 per second (2 bytes x 24,000 = 48,000 bytes per second of speech). There is no header, so nothing says the rate or channel count; the receiver must be told.
+- **A WAV file** is the same samples with a **44-byte RIFF header** in front (`RIFF`, size, `WAVE`, a `fmt ` chunk with PCM format, channels, sample rate, byte rate, block align, bits per sample, then a `data` chunk with the sample byte count; all little-endian). Layout: [WAVE PCM soundfile format (Stanford CCRMA)](https://ccrma.stanford.edu/courses/422-winter-2014/projects/WaveFormat/) (opened 2026-10-04; the sapp.org original refused the connection).
+- `elevenlabs_api.pcm_to_wav()` writes that header with Python's [`wave`](https://docs.python.org/3/library/wave.html) module into an `io.BytesIO` (an in-memory file, so no temp file). `wave` accepts file-like objects, and `writeframes()` fills in the length fields. I checked: 1 s of silence (48,000 bytes) became a 48,044-byte file starting `RIFF....WAVE`.
+- **Why trim to an even byte count** (`pcm[: len(pcm) // 2 * 2]`): a sample is 2 bytes, and network chunks can end in the middle of one. A stray odd byte would make `wave`/players misalign or reject the data.
+- **Why PCM instead of mp3 here:** PulseAudio plays PCM as-is (no decoder needed), and PCM chunks can be timed and, later, played as they arrive. mp3 is smaller but must be decoded, and frames can't be cut at arbitrary bytes. Same format as Azure's output, so `play()` handles both.
+- Related: sample rate, file-size math and Riff formats are in [How speech services work](2026-10-02-how-speech-services-work.md); the HTTP side is in [httpx note](2026-10-04-calling-http-apis-with-httpx.md).

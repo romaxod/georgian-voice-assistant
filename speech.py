@@ -10,6 +10,7 @@ small wrapper around libpulse-simple) talks to it without sudo.
 """
 import os
 import threading
+import time
 import wave
 from array import array
 from pathlib import Path
@@ -32,14 +33,21 @@ MTAVRULI_TO_MKHEDRULI = {cp: cp - 0xBC0 for cp in range(0x1C90, 0x1CC0) if cp no
 
 
 class SpeechError(Exception):
-    """A recording, recognition, synthesis or playback failure, with a message meant for the user."""
+    """A recording, recognition, synthesis or playback failure, with a message meant for the user.
+
+    retryable=False means trying again won't help (a missing or rejected key, no credit left), so a
+    fallback (providers.py) stops calling that provider for the rest of the session."""
+
+    def __init__(self, message: str, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def speech_config() -> speechsdk.SpeechConfig:
     load_dotenv()
     key, region = os.getenv("AZURE_SPEECH_KEY"), os.getenv("AZURE_SPEECH_REGION")
     if not key or not region:
-        raise SpeechError("AZURE_SPEECH_KEY and AZURE_SPEECH_REGION must be set in .env.")
+        raise SpeechError("AZURE_SPEECH_KEY and AZURE_SPEECH_REGION must be set in .env.", retryable=False)
     return speechsdk.SpeechConfig(subscription=key, region=region)
 
 
@@ -196,14 +204,20 @@ def transcribe(path: Path) -> str:
     return to_mkhedruli(" ".join(parts))
 
 
-def synthesize(text: str, voice: str = "giorgi") -> bytes:
-    """Georgian text-to-speech. Returns a complete WAV file (24 kHz, 16-bit, mono) as bytes."""
+def synthesize(text: str, voice: str = "giorgi", timing: dict | None = None) -> bytes:
+    """Georgian text-to-speech. Returns a complete WAV file (24 kHz, 16-bit, mono) as bytes.
+    If `timing` is given, timing["first_audio"] is set to the seconds until the first audio arrived."""
+    start = time.perf_counter()
     config = speech_config()
     config.speech_synthesis_voice_name = VOICES[voice]
     # A RIFF format includes the WAV header, so the bytes can be written straight to a .wav file
     config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm)
     # audio_config=None: keep the audio in result.audio_data instead of the SDK opening a speaker (ALSA)
     synthesizer = speechsdk.SpeechSynthesizer(speech_config=config, audio_config=None)
+    if timing is not None:
+        # `synthesizing` fires on the SDK's thread for every chunk of audio as it arrives; keep the first
+        synthesizer.synthesizing.connect(
+            lambda evt: timing.setdefault("first_audio", time.perf_counter() - start))
     result = synthesizer.speak_text_async(text).get()
     if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
         raise SpeechError(explain_cancel(result.cancellation_details, "text-to-speech"))

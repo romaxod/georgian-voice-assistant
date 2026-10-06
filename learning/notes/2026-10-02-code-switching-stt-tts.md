@@ -128,3 +128,16 @@ Observed 2026-10-03 with Azure STT and the Giorgi voice (`speech_smoke.py`). The
 - Pure Georgian is fine; every failure is a Latin-script word, which matches the G2P and one-language-model explanation above. English words don't come back as English ("email" became "მეილზე", Georgian spelling) so any WER or keyword check must decide how to treat that.
 - **Hypothesis (to confirm by ear):** "API-ს" became "დეფის" ("დეფისი" is Georgian for *hyphen*), so the Georgian voice may read the `-` aloud. If so, the hyphen in `API-ს` hurts TTS and STT in this test; a fix would be to write the suffix attached differently or use the speech-text step. Not confirmed.
 - **Implication for step 2.5:** the speech-text step (rewriting English terms and hyphens before TTS) is worth building and testing, and the demo sentences should avoid unverified terms. Run the same table again after adding it to see the effect.
+
+---
+
+## 9. ElevenLabs facts checked 2026-10-03/04 *(added 2026-10-04)* *(short note)*
+
+Provider docs change day to day; these are what I read and when.
+
+- **TTS models listing Georgian** ([models page](https://elevenlabs.io/docs/overview/models), read 2026-10-04): `eleven_v4` and `eleven_v4_turbo` ("90+ languages"), and also `eleven_v3` / v3 Conversational ("Georgian (kat)" in their 70+ lists). `eleven_multilingual_v2` and `eleven_flash_v2_5` do not. An earlier note that v3 had dropped Georgian was wrong or out of date and has been fixed in the repo. The code uses v4 Turbo. Lesson: re-check right before depending on a model list, and date every claim.
+- **Free plan and voices** (observed 2026-10-06): library voices over the API return HTTP 402 `payment_required: Free users cannot use library voices via the API`; the ~21 premade voices work. The voice library has no Georgian-native voices: the model (`eleven_v4*`) handles the language and the voice supplies only timbre. Roman picked premade "Brian" by ear from four male premade samples (Brian, Eric, Daniel, Chris).
+- **The API default `model_id` for TTS is `eleven_multilingual_v2`** ([stream endpoint](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)), which has no Georgian. That's why the code always sends `model_id`.
+- **Scribe v2 parameters used** ([API reference](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)): `model_id=scribe_v2`; `language_code=kat` (ISO 639-3; ISO 639-1 also accepted); `tag_audio_events=false` (otherwise "(laughter)" style tags appear in the text); `keyterms`: at most 1000 per request, each under 50 characters and at most 5 words; over 100 keyterms a 20-second minimum billing duration applies; keyterm prompting costs extra.
+- **Prices** ([pricing](https://elevenlabs.io/pricing/api), 2026-10-04): v4 Turbo $0.011 and v4 $0.022 per 1K characters, **both a promotional price (72% off) through October 12**; the regular prices on the page are $0.04 and $0.08. Scribe v2 $0.22 per hour. The page doesn't state the free plan's credit amount. For cost estimates after October 12 use the regular prices ([token and pricing note](2026-10-02-api-tokens-and-pricing.md) has the arithmetic style).
+- Used in [swappable providers](2026-10-04-swappable-providers-and-fallbacks.md) and [evaluation](2026-10-04-evaluating-speech-providers.md).

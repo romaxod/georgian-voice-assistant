@@ -793,3 +793,163 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `python voice.py --no-play --wav ...`, env overrides such as `AZURE_SPEECH_KEY=wrongkey` and `PULSE_SERVER=unix:/nonexistent`, a scratchpad `rt2.py`. Docstring edit in `speech_text.py` → [docs](docs/code/speech_text.py.md)
 - **How to explain it:** I tested the voice loop by breaking it, and I corrected my own docstring when the round-trip evidence only supported a weaker claim.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Code-switched STT failures left unfixed and recorded as eval cases for 3.1, 2.6a and 3.4 `[process]`
+- **Decision:** Did not make the `understand` prompt more tolerant of misheard words after the 2.5 spoken check. The two code-switched failures ("eSIM…" heard as "ეს წინ…", "QR კოდი…" heard as "ქიუ არკადი…") are recorded in `BUILD_PLAN.md` as eval cases and as the baseline for 2.6a and 3.4.
+- **Why:** The failures came from STT, not the new code. Tuning the prompt before 3.1/3.2 can measure it would lose the before/after comparison that 3.3 is for.
+- **Alternatives:** Making the `understand` prompt tolerant of misheard words now. Rejected because it would erase the baseline.
+- **How:** `BUILD_PLAN.md`, step 2.5 result note, which lists the cases as eval cases for 3.1 ("misheard question classified as other"), 2.6a and 3.4.
+- **How to explain it:** "I didn't patch the failures straight away. I kept them as a baseline, so I could show a measured before/after improvement."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Step 2.5 marked done after Roman's spoken check `[process]`
+- **Decision:** Step 2.5 is marked `[x] 2026-10-03` in `BUILD_PLAN.md`, with the spoken-check results written in. The plain Georgian question was transcribed exactly and answered correctly. The first, cold turn took 7.1 s until the reply started, and later turns took 4.5–5.1 s.
+- **Why:** The "Done when" condition was met: Roman asked out loud, got a correct spoken answer, and every turn printed its stage times.
+- **Alternatives:** none discussed.
+- **How:** `BUILD_PLAN.md` line 76, edited with a Python script. Marking it done did not wait for Roman's feedback on how the speech-text output sounded.
+- **How to explain it:** "I closed the step only when the spoken check passed, and I recorded the latency figures and the failures alongside it."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-03 · Do 3.1 (test set) before the optional 2.6a (ElevenLabs) `[scope]`
+- **Decision:** Claude recommended doing step 3.1 next and leaving 2.6a (ElevenLabs Scribe v2) until afterwards, if there is time. Roman has not yet answered.
+- **Why:** Phase 3 is the strongest evidence of what the project set out to show, and the plan says voice extras must never cost Phase 3 time. 3.1 can already use today's two STT failures as cases. Doing 2.6a later gives Scribe v2 a measured baseline to beat.
+- **Alternatives:** Doing 2.6a first. It is optional and needs Roman to sign up with ElevenLabs.
+- **How:** `BUILD_PLAN.md` ordering. Nothing has changed in the files yet.
+- **How to explain it:** "I put the evaluation work ahead of the optional voice upgrade, so the upgrade would have a baseline to be measured against."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Do 2.6a (ElevenLabs) now, ahead of 3.1 `[reversal]`
+- **Decision:** Start optional step 2.6a (ElevenLabs TTS + Scribe v2 STT) in this turn. This replaces the earlier "Do 3.1 (test set) before the optional 2.6a (ElevenLabs)" decision.
+- **Why:** Not stated. Claude asked "Do 2.6a now (Recommended)" or skip to 3.1. Roman's answer is truncated in the excerpt, and Claude then wrote "Going with 2.6a". The excerpt notes that `.env` had no ElevenLabs key yet, so the Scribe run and the blind rating wait on Roman's key.
+- **Alternatives:** Skip to 3.1 (the previous decision).
+- **How:** `BUILD_PLAN.md` 2.6a changed from `[ ]` to `[~]`.
+- **How to explain it:** I first put the evaluation test set ahead of the optional provider work, then did the provider work because Claude recommended it and I agreed. I should be able to say why I changed my mind.
+- **Decided by:** together
+
+### 2026-10-04 · Speech providers behind one interface, with Azure as automatic fallback `[architecture]`
+- **Decision:** `providers.py` gives TTS (`synthesize(text, timing)` → WAV bytes) and STT (`transcribe(path)` → text) one interface each. The classes are `AzureTTS`, `ElevenLabsTTS`, `AzureSTT` and `ScribeSTT`. `TTS_PROVIDER` / `STT_PROVIDER` in `.env`, or `--tts` / `--stt` on `voice.py`, pick the provider. `WithFallback` reruns a failed call on Azure.
+- **Why:** `voice.py` no longer imports provider functions directly, so a third provider is one new class. Azure is the backup because the whole pipeline was built and tested on it (1.5, 2.5), and its F0 tier is free, so it can't run out of credit mid-demo.
+- **Alternatives:** none discussed (the opposite direction, ElevenLabs as backup, is dismissed in the docstring).
+- **How:** `providers.py` → [docs](docs/code/providers.py.md); `voice.py` → [docs](docs/code/voice.py.md); `make_tts` / `make_stt`, `WithFallback`, `Provider.used`.
+- **How to explain it:** I put each speech vendor behind a two-method interface, so changing vendors is a config switch. Azure is the fallback because it's the tested, free baseline.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · `SpeechError.retryable`: permanent failures switch the primary off for the session `[code]`
+- **Decision:** `SpeechError(message, retryable=True)` gains a flag. A missing key, 401, 402, 404 or 422 sets `retryable=False`, and `WithFallback` stops calling the primary for the rest of the session (`primary_off`). 429, 5xx, timeouts and connection errors fall back for that turn only.
+- **Why:** A permanent failure (rejected key, no credit) would otherwise fail slowly on every turn. Break tests showed that on a connection-refused error the turn is served by Azure with `primary_off=False`.
+- **Alternatives:** none discussed.
+- **How:** `speech.py` → [docs](docs/code/speech.py.md); `elevenlabs_api.py` `HINTS` table; `providers.py` `WithFallback`.
+- **How to explain it:** It's a simplified circuit breaker. Errors that can't fix themselves turn the provider off, and transient ones are retried next turn.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · ElevenLabs called with plain `httpx`, not the `elevenlabs` SDK `[tooling]`
+- **Decision:** `elevenlabs_api.py` calls the two HTTP endpoints directly with `httpx`. `httpx` is already installed as a dependency of `openai`.
+- **Why:** There are only two endpoints. Direct calls show exactly what goes over the wire and give control of timeouts and error messages. They also let `synthesize()` time the first audio chunk.
+- **Alternatives:** The official `elevenlabs` SDK (not used, for the reasons above).
+- **How:** `elevenlabs_api.py` → [docs](docs/code/elevenlabs_api.py.md); `TTS_TIMEOUT` and `STT_TIMEOUT` use `httpx.Timeout`.
+- **How to explain it:** For two endpoints I skipped the SDK, so I control the timeouts and errors and can measure time-to-first-audio.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Default TTS model `eleven_v4_turbo`, chosen from the current docs `[provider]`
+- **Decision:** `TTS_MODEL = "eleven_v4_turbo"`, overridable with `ELEVENLABS_MODEL` (e.g. `eleven_v4`). STT uses `scribe_v2`.
+- **Why:** On 2026-10-03 only `eleven_v4` and `eleven_v4_turbo` listed Georgian. `eleven_v3` had dropped it, and `eleven_multilingual_v2` / `eleven_flash_v2_5` never listed it. Turbo has about 100 ms latency and costs half of v4 ($0.011 vs $0.022 per 1K characters). Scribe v2 lists Georgian in its 5–10% WER tier.
+- **Alternatives:** `eleven_v4` (kept as an override), `eleven_v3` (dropped Georgian), and the multilingual and flash models (no Georgian).
+- **How:** `elevenlabs_api.py`; SETUP.md §4 facts and the `BUILD_PLAN.md` 2.6a text updated to match.
+- **How to explain it:** I re-checked the docs and found the model list had changed since the day before. I picked the cheapest low-latency model that supports Georgian.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Request raw `pcm_24000` from ElevenLabs and wrap it as WAV `[code]`
+- **Decision:** `TTS_FORMAT = "pcm_24000"`: raw 16-bit mono samples at 24 kHz, wrapped into a WAV by `synthesize()`.
+- **Why:** It's the same audio format as Azure's output. PulseAudio plays it as-is, and its chunks can be timed as they arrive.
+- **Alternatives:** mp3 (the default `mp3_44100_128`), implicitly rejected.
+- **How:** `elevenlabs_api.py` `TTS_FORMAT`, `TTS_RATE`.
+- **How to explain it:** I chose raw PCM so both providers return identical audio, and so I could time the first chunk.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Scribe language fixed to `kat`, keyterms derived from the FAQ plus domain words `[code]`
+- **Decision:** `STT_LANGUAGE = "kat"`. `KEYTERMS` (18 terms) is the Latin-letter terms found in `data/faq.json` (`topic`, `question`, `answer`, `keywords` only, not `id`) plus a fixed `DOMAIN_TERMS` list. `--no-keyterms` turns them off.
+- **Why:** The fixed language code stops short clips being taken for another language. "API" and "key" are deliberately left out of the keyterms because copying them from Roman's test recordings would make Scribe look better than it would be on new questions. `id` is excluded because ids are English slugs, not words a caller says.
+- **Alternatives:** none discussed.
+- **How:** `providers.py` `faq_terms()`, `KEYTERMS`, `DOMAIN_TERMS`; `elevenlabs_api.py` `STT_LANGUAGE`.
+- **How to explain it:** I kept the test words out of the keyterm list so the comparison isn't flattering. Keyterms come from the FAQ vocabulary.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · `compare_speech.py`: change one variable at a time, call providers without fallback, blind-rate TTS `[process]`
+- **Decision:** `compare_speech.py` has three modes. `stt` runs Roman's recordings through Azure, then Scribe v2, then Scribe v2 with keyterms, and reports WER and per-term hits. `tts` runs the same 10 sentences through Azure Giorgi and ElevenLabs. `rate` plays the TTS clips in random order, hides the provider, and asks for 1–5 pronunciation and naturalness scores.
+- **Why:** Providers are called without `WithFallback` so a failure shows as a failure and not as a quiet Azure answer. Both TTS providers get the same `speakable()` text. A Georgian-script spelling of a term counts as "came through". Azure baseline measured: 83% WER and 2/10 English terms on 5 recordings.
+- **Alternatives:** none discussed.
+- **How:** `compare_speech.py` → [docs](docs/code/compare_speech.py.md); results saved to `runs/` (gitignored); clips in `audio/tts_compare/`.
+- **How to explain it:** I changed one thing per stage (provider, then keyterms), measured with WER, and rated voices blind so I wouldn't favour the paid one.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Break-test the ElevenLabs path with a fake key and a dead port `[process]`
+- **Decision:** Verify the fallback with three cases: no key, a fake key that reaches ElevenLabs and returns HTTP 401, and `API` pointed at `127.0.0.1:9` for connection refused.
+- **Why:** The fake key exercises the real HTTP path, the error parsing and the fallback. The refused connection checks the retryable branch (Azure serves the turn, `primary_off=False`). The excerpt reports that all three behave correctly.
+- **Alternatives:** none discussed.
+- **How:** Ad-hoc commands with `voice.py --wav ... --tts elevenlabs --stt elevenlabs --no-play` and `elevenlabs_api.py tts|stt`.
+- **How to explain it:** I tested each failure mode on purpose: no key, bad key and no network. The real ElevenLabs key wasn't needed to prove the fallback works.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Pick a male ElevenLabs voice so the blind TTS rating doesn't give the provider away `[process]`
+- **Decision:** Roman is asked to choose a **male** voice for `ELEVENLABS_VOICE_ID`, to match the Azure voice (Giorgi).
+- **Why:** A female voice would reveal which provider made a clip in the blind 1–5 rating run by `python compare_speech.py rate`.
+- **Alternatives:** none discussed.
+- **How:** SETUP.md §4 steps 1–3. The voice ID goes in `.env`, and `compare_speech.py` → [docs](docs/code/compare_speech.py.md) reads it.
+- **How to explain it:** "I matched the voice gender across providers so the blind listening test measured quality and not a voice I could recognise."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-04 · Keep `eleven_v4_turbo`, but correct the claim that `eleven_v3` lacks Georgian `[reversal]`
+- **Decision:** The 2026-10-03 claim "`eleven_v3` no longer lists Georgian" was withdrawn. `eleven_v3` does list Georgian (kat), so the default model stays `eleven_v4_turbo`. The `elevenlabs_api.py` docstring, SETUP.md and BUILD_PLAN.md were corrected. The same pass fixed the httpx comment: httpx comes from `langchain-core` and `langgraph-sdk`, not `openai`.
+- **Why:** A tutor subagent flagged both claims. Claude re-checked them: `pip show` lists `httpx2` for `openai`, and the models page was fetched on 2026-10-04 and shows "Georgian (kat)". The `model_id` is always sent because the API default, `eleven_multilingual_v2`, has no Georgian. Turbo is kept for ~100 ms latency and half the price of v4 (the v4 prices are a promotion until 12 Oct).
+- **Alternatives:** Switching to `eleven_v3` was not discussed. Only the factual claim changed.
+- **How:** `elevenlabs_api.py` → [docs](docs/code/elevenlabs_api.py.md), SETUP.md, BUILD_PLAN.md. This replaces the earlier note behind "Default TTS model `eleven_v4_turbo`, chosen from the current docs".
+- **How to explain it:** "A reviewer flagged a stale fact in my notes. I re-verified it against the live docs and `pip show` before fixing it, rather than trusting either source blindly."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-05 · ElevenLabs API key: restricted endpoints and a credit cap of about 3000 `[tooling]`
+- **Decision:** Roman's key settings showed 5 credits. Claude advised setting **Per credit refresh period** to about 3000 and keeping **Restrict Key** on. Only Text to Speech, Speech to Text and Voices (read) are allowed. Everything else is off.
+- **Why:** One credit is roughly one TTS character, and the comparison needs about 900 characters per run plus test calls. Scribe is billed per minute of audio. With 5 credits every call would fail and fall back to Azure. 3000 covers this step and the clone stage and still caps runaway use. The credit-per-character and Scribe billing claims came from Claude and were not checked against docs in this excerpt.
+- **Alternatives:** Leaving the 5-credit cap was rejected because every call would fail. An unrestricted key or a higher cap was not discussed. "Not stated" on why 3000 rather than another number.
+- **How:** ElevenLabs dashboard, API key settings. No code change. The key goes in `.env` and is not recorded here.
+- **How to explain it:** I gave the key least privilege, with only the three endpoints I use and a credit cap, so a bug or leaked key can't burn the account.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-05 · Pick the voice by ear on Georgian text, from Default voices with no Georgian filter `[process]`
+- **Decision:** Remove the Georgian language filter, which returned no voices. Choose from Default or male voices. Test 2–3 on the TTS page with model Eleven v4 and a Georgian eSIM sentence. Copy the best voice's ID into `.env` as `ELEVENLABS_VOICE_ID`.
+- **Why:** The filter only lists voices whose native speaker is Georgian, and none exist. Claude said the model handles the language and the voice only sets the timbre, so any voice can speak Georgian, though accent may vary. Default voices are the safest on the free plan. Claude gave these as explanations without citing docs.
+- **Alternatives:** A native Georgian voice isn't available. Voice cloning is mentioned only as a later stage. Other selection methods were not discussed.
+- **How:** ElevenLabs web UI, then `ELEVENLABS_VOICE_ID` in `.env`. Builds on the earlier male-voice entry.
+- **How to explain it:** There's no native Georgian voice, so I picked by listening to a real Georgian sentence on the multilingual model, not by the voice's label.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-06 · Drop the library voice Mark, shortlist four premade voices after an HTTP 402 `[reversal]`
+- **Decision:** The voice shortlist is now four premade male voices: Brian, Eric, Daniel and Chris. It replaces the library voice "Mark - Natural Conversations" that `ELEVENLABS_VOICE_ID` pointed to. Roman will pick one by ear and put its ID in `.env`. Claude synthesized one Georgian sample per voice into `audio/voice_pick/`.
+- **Why:** The check call `elevenlabs_api.py tts` failed with "needs a paid plan". The Free plan can't use library voices over the API (`HTTP 402 payment_required: Free users cannot use library voices via the API`). The account lists about 21 premade voices. These voices speak Georgian through `eleven_v4*` even though none is a Georgian native voice. The voice library has no Georgian-native voices at all. Why these four and not other premade voices: not stated.
+- **Alternatives:** Paying for a plan to keep Mark or another library voice. It wasn't discussed whether to pay, and the Free plan stayed. Filtering voices by Georgian accent: none exists in the library.
+- **How:** The 402 finding is recorded in `SETUP.md`, replacing the earlier "may not allow that voice" guess. Samples are in `audio/voice_pick/{brian,eric,daniel,chris}.wav`. All say the same eSIM/QR sentence after `speakable()` from `speech_text.py`. Latency was about 0.8–1.0 s to first audio and 3.1–5.2 s to finish.
+- **How to explain it:** "My first voice choice was a library voice that the free API tier blocks. I found that with a real call and a 402, not from the docs, and re-picked from the premade voices."
+- **Decided by:** Claude (unconfirmed). Roman still has to listen and choose.
+
+### 2026-10-06 · Brian chosen as the ElevenLabs voice `[provider]`
+- **Decision:** Roman picked the premade ElevenLabs voice Brian from the shortlist and set it as `ELEVENLABS_VOICE_ID` in `.env`. The voice ID is not copied here.
+- **Why:** Not stated. Roman only said "its brian". This follows the earlier by-ear listening on Georgian text.
+- **Alternatives:** The other three shortlisted premade voices, which this turn doesn't name. Not stated why Brian beat them.
+- **How:** `.env` key `ELEVENLABS_VOICE_ID`. The line has a stray space before `=`, which was left as harmless. `compare_speech.py tts` then ran with Brian against Azure `ka-GE-GiorgiNeural`.
+- **How to explain it:** I chose the voice by listening to Georgian samples, not by reading voice descriptions, and then checked it against Azure in a blind rating.
+- **Decided by:** Roman
+
+### 2026-10-06 · Streaming playback left out for now, as a possible follow-up `[scope]`
+- **Decision:** `voice.py` still plays the reply only after the whole audio file has arrived. Playing audio while it streams in is not built yet. It stays a possible follow-up if Brian wins on sound.
+- **Why:** The TTS run showed ElevenLabs starts sooner but finishes later. Medians: first audio 0.62 s against 0.74 s for Azure, whole reply 3.78 s against 1.23 s. Because playback waits for the full file, ElevenLabs adds about 2.5 s of silence per turn. Streaming would make first-audio the number that counts. The reason for deferring is not stated beyond waiting to see whether Brian wins on sound.
+- **Alternatives:** Stream while downloading, so ElevenLabs would win on latency. It was deferred, not rejected.
+- **How:** No code changed. The latency numbers come from `compare_speech.py tts`. `voice.py` is the file that would change.
+- **How to explain it:** ElevenLabs had lower time to first audio but slower total time, so I decided to settle sound quality first and only then spend effort on streaming.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-06 · Scribe + keyterms for STT by default, Azure TTS for live use, ElevenLabs TTS for the demo `[provider]`
+- **Decision:** Suggested adding `STT_PROVIDER=elevenlabs` to `.env` (Scribe v2 + 18 keyterms). Keep TTS on Azure `ka-GE-GiorgiNeural` for live use. Use `--tts elevenlabs` only when recording the demo. Not yet applied: the turn only suggests it.
+- **Why:** STT comparison on 5 recordings: word error rate 46% for Scribe + keyterms vs 83% for Azure, and 4/10 English terms found vs 2/10, at similar speed (1.5 s vs 1.3 s per file). TTS: ElevenLabs won the blind rating (pronunciation 4.8 vs 2.3, naturalness 3.9 vs 1.6) but is too slow live. In the end-to-end run, c4 took 22.8 s before the reply started (TTS 15.1 s for 140 characters), because `voice.py` waits for the whole file before playing.
+- **Alternatives:** Keep Azure for both (less accurate STT). Use ElevenLabs TTS live (too slow as built). Streaming playback was mentioned as a possible fix, but it may stutter because generation runs at about the speed of speech, and it was not done.
+- **How:** `.env` key `STT_PROVIDER`; `voice.py --stt elevenlabs --tts elevenlabs`; results recorded in `BUILD_PLAN.md` under 2.6a. `voice.py` → [docs](docs/code/voice.py.md); `providers.py` → [docs](docs/code/providers.py.md).
+- **How to explain it:** I measured both providers: ElevenLabs STT roughly halved the word error rate and sounds far better, but its TTS latency was too high for live turns, so I use it for STT and keep it for demo TTS.
+- **Decided by:** Claude (unconfirmed)
