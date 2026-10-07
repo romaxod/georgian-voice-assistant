@@ -107,10 +107,11 @@ Every step follows the loop in PROJECT_CONTEXT.md: short why → Claude implemen
 
 ## Phase 3: Evaluation (day 3)
 
-- [ ] **3.1 Test set**
+- [x] 2026-10-07 **3.1 Test set** *(`data/eval_cases.yaml`, `eval_cases.py`)*
   - Do: write 20–25 text cases as data (JSON or YAML): ordinary questions, ambiguous ones, missing information, multi-turn, tool failures, false-action claims, and **code-switched** questions (Georgian with English words). Each case has its expected behavior.
   - Learn: what makes a good eval case, behavior vs. exact wording.
   - Done when: the file covers every category, with at least 3 cases each.
+  - Result: 25 cases, 28 turns, 8 categories (the 7 above plus `off_topic`, since "other" is its own route). Ordinary 3, ambiguous 3, missing_info 3, multi_turn 3, tool_failure 3, false_action 4 (with a prompt injection and "connect me to an operator"), code_switched 3 (the text of recordings c1, c3, c4, so 3.4 can compare spoken vs typed), off_topic 3. YAML, not JSON, for comments and readable Georgian; PyYAML was already installed (LangChain depends on it). Expectations are behavior: allowed outcomes (`answer`, `clarify`, `handoff:<reason>`), intent, whether the tool ran, which FAQ ids it found (`facts_include`: that's how the tool's argument is checked, since the topic is free text), retry count, required/forbidden strings, and a yes/no LLM-judge question on 8 turns where rules can't decide. Wrong tool arguments aren't a separate category: `facts_include` checks them on every FAQ turn, and the MCP server's argument validation was break-tested in 2.3. `tool_failure` cases set `setup.tool` (`fail_once`, `fail_always`, `down`). `eval_cases.py` validates the file with Pydantic (`extra="forbid"`, so a misspelled field is an error, not a check that never runs) and checks FAQ ids and coverage. Break test: a misspelled field, an unknown outcome, an unknown FAQ id and a category with 2 cases each gave a clear error and exit 1. `amb-price` is also an example in UNDERSTAND_PROMPT (noted in the case); the other ambiguous wordings are new. For 3.2: the hand-off reasons are copied in `eval_cases.py` (importing `graph.py` takes ~19 s), so the runner must check they still match `graph.HANDOFF_REPLIES` (they do today).
 
 - [ ] **3.2 Eval runner**
   - Do: run every case through the graph and check the tool used, its arguments, and behavior (rules first; an LLM judge only where rules can't decide). Record latency. Save results to `runs/`.

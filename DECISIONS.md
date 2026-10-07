@@ -1058,3 +1058,75 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How to explain it:** "I record what I didn't measure as well as what I did, so I don't claim a blind test I never ran."
 - **Decided by:** Claude (unconfirmed)
 ```
+
+### 2026-10-07 · Eval test set is YAML data with 25 cases in 8 categories `[code]`
+- **Decision:** The 3.1 test set is `data/eval_cases.yaml`: 25 cases and 28 turns. The 8 categories are ordinary, ambiguous, missing_info, multi_turn, tool_failure, false_action (4 cases), code_switched and off_topic. `off_topic` was added to the 7 planned categories because "other" is its own route.
+- **Why:** YAML allows comments and keeps Georgian readable. PyYAML was already installed because LangChain depends on it. `off_topic` covers the "other" route, which the plan's list didn't include.
+- **Alternatives:** JSON, which the plan allowed. It was dropped for lacking comments and for less readable Georgian.
+- **How:** `data/eval_cases.yaml`. The header comment documents the `expect` and `setup.tool` fields. The code_switched cases reuse the text of recordings c1, c3 and c4, so step 3.4 can compare spoken and typed input.
+- **How to explain it:** I wrote the test set as commented YAML data, so I can add a case without touching code, and the code-switched cases match my recordings so I can compare spoken and typed input.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Eval expectations describe behavior, not exact wording `[code]`
+- **Decision:** Each turn's `expect` lists allowed `outcome`s (`answer`, `clarify`, `handoff:<reason>`), `intent`, `tool_called`, `facts_include` (FAQ ids), `lookup_attempts`, `reply_has` and `reply_lacks`. Eight turns also carry a yes/no `judge` question for an LLM judge. The runner applies two rules to every turn: the reply is in Georgian, and it doesn't match `FALSE_ACTION_CLAIM`.
+- **Why:** The YAML header says exact replies would fail on every rewording. Rules cover what can be checked mechanically, and the judge covers what rules can't, such as implied actions or invented facts.
+- **Alternatives:** Exact expected replies, rejected for the rewording reason above. A separate "wrong tool arguments" category was also rejected. The topic is free text, so `facts_include` checks the argument by what it finds, and the MCP server's argument validation was break-tested in 2.3.
+- **How:** `data/eval_cases.yaml` (header comment) and the `Expect` model in `eval_cases.py` → [docs](docs/code/eval_cases.py.md).
+- **How to explain it:** I test what the assistant does, not the exact words it uses. That way a rewording doesn't break the tests, and the tool's argument is judged by which FAQ entries it retrieved.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Missing-info cases test refusal to guess, after probing what `lookup_faq` returns `[process]`
+- **Decision:** Before writing the cases, `faq.lookup_faq` was run on plausible topics. The `missing_info` cases (TV, family plan, installments) are written to check that `answer` sets `answered=false` and `check` hands off. They do not check that search finds nothing.
+- **Why:** The probe showed the expected FAQ ids are reachable. It also showed the missing-info topics return unrelated entries, for example "ტელევიზია პაკეტები" → `roaming-no-package`, `extra-data`, `plans-overview`.
+- **Alternatives:** none discussed.
+- **How:** The `miss-tv`, `miss-family-plan` and `miss-installments` cases in `data/eval_cases.yaml`.
+- **How to explain it:** Search always returns something, so the real risk is the model answering from the wrong entries, and the test targets that.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Validator keeps its own copy of the hand-off reasons instead of importing `graph.py` `[code]`
+- **Decision:** `eval_cases.py` defines `HANDOFF_REASONS` itself. The step 3.2 runner will assert that it matches `graph.HANDOFF_REPLIES`.
+- **Why:** Timing showed `import graph` takes about 19 s on /mnt/c, against 0.5 s for pydantic+yaml. That is too slow for a file check. A check confirmed the two sets match today.
+- **Alternatives:** Importing `graph.HANDOFF_REPLIES` directly. It was rejected for the 19 s import.
+- **How:** `HANDOFF_REASONS` and `OUTCOMES` in `eval_cases.py` → [docs](docs/code/eval_cases.py.md).
+- **How to explain it:** I measured the import at 19 s, so I duplicated a small constant and added a drift check, which keeps validation near-instant.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Strict Pydantic validation of the test set with `extra="forbid"` and a minimum per category `[code]`
+- **Decision:** `eval_cases.py` loads the YAML into Pydantic models with `extra="forbid"`. It rejects unknown fields, categories, outcomes and FAQ ids, and duplicate case ids. It also requires at least `MIN_PER_CATEGORY = 3` cases per category.
+- **Why:** The module docstring says a typo like `reply_hass` would otherwise be silently ignored and its check would never run.
+- **Alternatives:** none discussed.
+- **How:** `eval_cases.py` (`Strict`, `Expect`, `load_cases`). `python eval_cases.py [--file X]` prints the cases per category and exits 1 on errors → [docs](docs/code/eval_cases.py.md).
+- **How to explain it:** A misspelled check in a test file would silently never run, so the loader rejects unknown keys.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Verify 3.1 with planted mistakes, then mark it done `[process]`
+- **Decision:** Break test on copies of the YAML. The planted mistakes were a `reply_hass` typo, outcome `handoff:gave_up`, FAQ id `port-number`, and only 2 `off_topic` cases. A missing file was also tried. After that, 3.1 was marked `[x] 2026-10-07` in `BUILD_PLAN.md`.
+- **Why:** All planted mistakes were caught with clear messages and exit code 1. The "Done when" criterion (every category has at least 3 cases) is met.
+- **Alternatives:** none discussed.
+- **How:** The break-test copies were written to the session scratchpad and run with `python eval_cases.py --file <copy>`. The result is recorded in `BUILD_PLAN.md` under 3.1.
+- **How to explain it:** I checked that the validator fails when it should by planting four mistakes, and it caught each one.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Code-switched eval cases reuse the text of recordings c1, c3 and c4 `[code]`
+- **Decision:** The three `code_switched` cases (`cs-api-key`, `cs-roaming-iphone`, `cs-esim-qr-email`) use the same wording as Roman's recordings c1, c3 and c4.
+- **Why:** Step 3.4 can then compare the spoken and typed versions of the same questions.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md)
+- **How to explain it:** I reused the wording of my own recordings in the typed cases, so I can measure what speech recognition costs on exactly the same questions.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Wrong tool arguments are checked through `facts_include`, not as a separate category `[code]`
+- **Decision:** There is no "wrong tool arguments" category. The FAQ search topic is free text, so every FAQ turn is checked by which entries it found (`facts_include`). The MCP server's own argument checks stay covered by the 2.3 break tests.
+- **Why:** The topic is free text, so there is no fixed "correct" argument to compare against. What the search returned is what can be checked. The argument validation was already break-tested in 2.3.
+- **Alternatives:** A separate wrong-arguments category (implicitly rejected, with the reasons above).
+- **How:** `facts_include` field in `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md); the schema is in `eval_cases.py` → [docs](docs/code/eval_cases.py.md)
+- **How to explain it:** Search topics are free text, so I judge the arguments by what the search found, not by their exact form.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · `amb-price` stays in the eval set even though it is a prompt example, and is flagged `[code]`
+- **Decision:** The `amb-price` case is kept although the same wording is an example inside the classification prompt. A note in the case says so. The other two ambiguous cases use new wording.
+- **Why:** The other two ambiguous wordings are new, so the test doesn't just repeat the prompt. The note shows which case is contaminated.
+- **Alternatives:** none discussed (removing it or rewording it was not mentioned).
+- **How:** `amb-price` in `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md)
+- **How to explain it:** I know one case overlaps with a prompt example, so I flagged it and made the other ambiguous cases use unseen wording.
+- **Decided by:** Claude (unconfirmed)
