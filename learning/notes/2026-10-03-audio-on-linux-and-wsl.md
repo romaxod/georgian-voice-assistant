@@ -112,3 +112,5 @@ Azure SDK default -> libasound (ALSA) -> no card in WSL   (needs the pulse plugi
 - **Why trim to an even byte count** (`pcm[: len(pcm) // 2 * 2]`): a sample is 2 bytes, and network chunks can end in the middle of one. A stray odd byte would make `wave`/players misalign or reject the data.
 - **Why PCM instead of mp3 here:** PulseAudio plays PCM as-is (no decoder needed), and PCM chunks can be timed and, later, played as they arrive. mp3 is smaller but must be decoded, and frames can't be cut at arbitrary bytes. Same format as Azure's output, so `play()` handles both.
 - Related: sample rate, file-size math and Riff formats are in [How speech services work](2026-10-02-how-speech-services-work.md); the HTTP side is in [httpx note](2026-10-04-calling-http-apis-with-httpx.md).
+
+*(added 2026-10-07)* Playing audio while it is still arriving (PulseAudio `tlength`/`prebuf`, underruns, generators): see [Streaming audio playback](2026-10-07-streaming-audio-generators-and-buffering.md).

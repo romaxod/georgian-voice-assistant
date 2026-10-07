@@ -8,11 +8,13 @@ Audio goes through PulseAudio on purpose: on Linux the Speech SDK opens the micr
 through ALSA, which WSL doesn't connect to Windows. WSLg runs a PulseAudio server, and pasimple (a
 small wrapper around libpulse-simple) talks to it without sudo.
 """
+import io
 import os
 import threading
 import time
 import wave
 from array import array
+from collections.abc import Iterable
 from pathlib import Path
 
 import azure.cognitiveservices.speech as speechsdk
@@ -222,6 +224,69 @@ def synthesize(text: str, voice: str = "giorgi", timing: dict | None = None) -> 
     if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
         raise SpeechError(explain_cancel(result.cancellation_details, "text-to-speech"))
     return result.audio_data
+
+
+def wav_pcm(wav_bytes: bytes) -> tuple[bytes, int]:
+    """The raw samples and sample rate inside a WAV file held in memory (e.g. synthesize()'s result)."""
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+        return wav.readframes(wav.getnframes()), wav.getframerate()
+
+
+# Streaming playback (step 2.6b). PulseAudio's defaults hold ~2 s of audio and start playing only once
+# that buffer is full, which would undo most of what streaming saves. A small target buffer starts
+# the sound after PREBUFFER_SECONDS; if the network then falls behind, PulseAudio pauses (a gap) and
+# resumes once it has PREBUFFER_SECONDS again.
+PLAY_BUFFER_SECONDS = 0.5
+PREBUFFER_SECONDS = 0.2
+
+
+def play_stream(chunks: Iterable[bytes], rate: int) -> dict:
+    """Play raw 16-bit mono samples while they're still arriving, and return when they've all been played.
+
+    Returns {"pcm": all the samples, "first_audio": s from the call until the first audio went to the
+    speaker, "gaps": estimated pauses (s) where the audio arrived slower than it plays}. There's no
+    "all audio received" time: write() blocks while PulseAudio's buffer is full, so the stream is read
+    only as fast as it plays, and the last chunk always "arrives" near the end of playback. A SpeechError from `chunks` (a failed TTS) passes through, after
+    the part already received has been played as far as it got."""
+    def nbytes(seconds: float) -> int:
+        return int(seconds * rate) * SAMPLE_WIDTH
+
+    start = time.perf_counter()
+    try:
+        player = pasimple.PaSimple(pasimple.PA_STREAM_PLAYBACK, pasimple.PA_SAMPLE_S16LE, CHANNELS, rate,
+                                   app_name="jikhvi-voice", tlength=nbytes(PLAY_BUFFER_SECONDS),
+                                   prebuf=nbytes(PREBUFFER_SECONDS))
+    except pasimple.PaSimpleError as e:
+        raise SpeechError(f"couldn't play through PulseAudio ({e}). Is WSLg running? (echo $PULSE_SERVER)") from e
+    parts: list[bytes] = []
+    stats: dict = {"gaps": []}
+    leftover = b""  # an HTTP chunk can end in the middle of a 2-byte sample; PulseAudio wants whole samples
+    played_from, written = 0.0, 0.0  # when the sound (re)started, and seconds of audio written since then
+    try:
+        for chunk in chunks:
+            now = time.perf_counter()
+            parts.append(chunk)
+            data, leftover = leftover + chunk, b""
+            if len(data) % SAMPLE_WIDTH:
+                data, leftover = data[:-1], data[-1:]
+            if not data:
+                continue
+            if "first_audio" not in stats:
+                stats["first_audio"] = now - start
+                played_from = now
+            elif (behind := (now - played_from) - written) > 0.05:
+                # The speaker ran out before this chunk came: the caller heard a pause of about `behind`
+                stats["gaps"].append(round(behind, 2))
+                played_from, written = now, 0.0
+            player.write(data)
+            written += len(data) / (rate * SAMPLE_WIDTH)
+        player.drain()  # wait until the last sample has actually been played
+    except pasimple.PaSimpleError as e:
+        raise SpeechError(f"playback failed in PulseAudio ({e})") from e
+    finally:
+        player.close()
+        stats["pcm"] = b"".join(parts)
+    return stats
 
 
 def play(path: Path) -> None:

@@ -953,3 +953,108 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `.env` key `STT_PROVIDER`; `voice.py --stt elevenlabs --tts elevenlabs`; results recorded in `BUILD_PLAN.md` under 2.6a. `voice.py` → [docs](docs/code/voice.py.md); `providers.py` → [docs](docs/code/providers.py.md).
 - **How to explain it:** I measured both providers: ElevenLabs STT roughly halved the word error rate and sounds far better, but its TTS latency was too high for live turns, so I use it for STT and keep it for demo TTS.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-06 · 2.6b (clone of Roman's voice) becomes required, not optional `[reversal]`
+- **Decision:** Step 2.6b, the assistant speaking in Roman's cloned voice, changes from "Optional stretch" to required. It is estimated at about 1.5–2 h, of which about 1 h needs Roman, and it must never cost time from Phase 3.
+- **Why:** Roman said "this is not optional, i want it" (he wants the clone in the demo). Claude judged it doable because a clone is just a different voice ID, so the existing ElevenLabs code works unchanged.
+- **Alternatives:** Keep it as an optional stretch (the 2026-10-02 plan). Not chosen because Roman wants it.
+- **How:** `BUILD_PLAN.md` (2.6b line and a dated change-log line). The plan steps are: record about 2 min of Georgian, create an Instant Voice Clone via the website or `POST /v1/voices/add`, put the voice ID in `.env`, and add a third column to `compare_speech.py tts`/`rate`. The clone needs the ElevenLabs Starter plan, because Instant Voice Cloning isn't on Free.
+- **How to explain it:** "I upgraded the clone from a stretch goal to a requirement because a voice that sounds like me makes the demo stronger, and I capped its time so it couldn't eat the evaluation phase."
+- **Decided by:** Roman
+
+### 2026-10-06 · Streaming playback added to 2.6b, reversing "left out for now" `[reversal]`
+- **Decision:** The voice loop gets streaming playback for ElevenLabs, playing audio as it arrives instead of after the full download. It is added to step 2.6b. This replaces the 2026-10-06 entry "Streaming playback left out for now, as a possible follow-up".
+- **Why:** 2.6a measured 15 s of silence before an ElevenLabs reply with play-after-download. A cloned voice is still ElevenLabs TTS, so the clone doesn't fix this. Claude expects a start of about 1–2 s, but it may stutter because generation ran at roughly the speed of speech.
+- **Alternatives:** Keep play-after-download, which would leave long silences in the demo. Not chosen. Azure TTS for live use was already the default (the 2026-10-06 provider entry), but that doesn't help the cloned voice.
+- **How:** Listed under 2.6b in `BUILD_PLAN.md` ("Claude first" part) and in its change log. The code is not written yet and will live in the voice loop (`voice.py`/`speech.py`).
+- **How to explain it:** "I measured 15 s of silence before the reply started, so I moved to streaming playback instead of accepting the latency."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Streaming playback with a small PulseAudio buffer (`PLAY_BUFFER_SECONDS = 0.5`, `PREBUFFER_SECONDS = 0.2`) `[code]`
+- **Decision:** `play_stream(chunks, rate)` in `speech.py` plays raw samples as they arrive. It sets a 0.5 s target buffer and starts sound after 0.2 s of audio. It returns `pcm`, `first_audio` and estimated `gaps`.
+- **Why:** PulseAudio's defaults hold about 2 s and start playing only once that buffer is full, which would undo most of what streaming saves. Measured results: sound starts after about 0.55–0.78 s, with no gaps in 3 real streamed runs.
+- **Alternatives:** PulseAudio's default buffering, rejected for the reason above. Nothing else discussed.
+- **How:** `speech.py` → [docs](docs/code/speech.py.md). `voice.py` → [docs](docs/code/voice.py.md) prints `sound after X s` and any gaps. Checked first with already-downloaded audio (6.6 s of audio played in 6.4 s, no false gaps).
+- **How to explain it:** I shrank the audio buffer so the caller hears the reply about half a second in, not after the whole reply has been generated.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Drop the "all audio received" time from the streaming stats `[code]`
+- **Decision:** Removed `received` from `play_stream`'s result and from the `[tts]` line in `voice.py`. Only `first_audio` and `gaps` remain.
+- **Why:** `write()` blocks while PulseAudio's buffer is full, so the stream is read only as fast as it plays. The last chunk therefore always "arrives" near the end of playback, and the number was misleading (about 10.3 s for 10 s of audio).
+- **Alternatives:** Keep the metric, not discussed.
+- **How:** `speech.py` → [docs](docs/code/speech.py.md), `voice.py` → [docs](docs/code/voice.py.md). The docstring now explains why there is no such time.
+- **How to explain it:** I removed a metric once I saw that playback back-pressure made it meaningless.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Fallback behaviour for streamed TTS: switch to Azure only before any audio has played `[code]`
+- **Decision:** `WithFallback.stream` falls back to Azure if the ElevenLabs stream fails before the first chunk. If it fails mid-reply, it raises `SpeechError` after the part already received has played. `voice.py` then prints `the full reply is on screen`.
+- **Why:** Not stated explicitly. The code comment says a mid-reply failure happens after the caller has already heard the start, and the whole reply is still on screen. The break test showed "raised after 1 chunk(s)" for the mid-reply case and Azure used for the before-audio case.
+- **Alternatives:** none discussed.
+- **How:** `providers.py` → [docs](docs/code/providers.py.md), `voice.py` → [docs](docs/code/voice.py.md). Tested with fake `Breaks` and `FailsFirst` providers.
+- **How to explain it:** Once audio is playing I can't un-play it, so the fallback only takes over before the first sound.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Two ElevenLabs voices, `ready` and `clone`, with separate env vars `[architecture]`
+- **Decision:** The clone ID goes in `ELEVENLABS_CLONE_VOICE_ID`, and the premade voice stays in `ELEVENLABS_VOICE_ID`. `ELEVENLABS_VOICE=ready|clone` or `--el-voice` chooses between them. The mapping is `VOICE_SETTINGS` in `elevenlabs_api.py`.
+- **Why:** The three-voice comparison needs both IDs at once, and switching becomes a config change. This replaces the earlier `SETUP.md` instruction to overwrite `ELEVENLABS_VOICE_ID` with the clone ID.
+- **Alternatives:** Overwrite `ELEVENLABS_VOICE_ID` and keep the old ID in a comment, which was the earlier `SETUP.md` text. Rejected because of the comparison.
+- **How:** `elevenlabs_api.py` → [docs](docs/code/elevenlabs_api.py.md), `providers.py` → [docs](docs/code/providers.py.md), `voice.py`, `SETUP.md`. Break tests: a wrong clone ID gives a readable 404 error and a fallback to Azure. An unknown `ELEVENLABS_VOICE=roman` was also tested.
+- **How to explain it:** Both voices live in config side by side, so I can A/B them without editing code.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · TTS comparison gets a third column for the clone, with `--no-clone`, and every voice is re-synthesized each run `[process]`
+- **Decision:** `compare_speech.py tts` now runs 10 sentences × 3 voices (Azure Giorgi, premade ElevenLabs, clone) and writes 30 clips for blind rating. `--no-clone` restores the two-column run.
+- **Why:** The code comment says the rating has to compare all voices in one sitting on one scale, and older clips may come from older models.
+- **Alternatives:** Reuse the clips from the earlier run, rejected for the reason above.
+- **How:** `compare_speech.py` → [docs](docs/code/compare_speech.py.md). Clips go to `audio/tts_compare/`.
+- **How to explain it:** I regenerate every clip each time so the blind comparison is fair.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Verify 2.6b with repeated timing runs and break tests, and treat the 22 gaps as a provider slow moment `[process]`
+- **Decision:** After a first `voice.py` run showed 22 gaps, the player was tested alone with local audio, and then 3 real streams through the player gave 0 gaps. Two more full loops gave "no gaps". The ElevenLabs stream timing was also probed 8 times.
+- **Why:** The player alone worked, and gaps did not recur in later runs, so the cause was judged to be a one-off slow moment on ElevenLabs' side, like the one on 10-06. Probe results also showed `eleven_v4_turbo` streaming faster than `eleven_v4` (first audio about 1.0 s vs 1.3 s, done about 2.3 s vs 4.3 s on the long clone text).
+- **Alternatives:** none discussed.
+- **How:** Scratchpad scripts `arrival.py`, `slow.py` and `repeat.py`, plus `voice.py --wav ... --el-voice clone`. The scratch files are not in the repo.
+- **How to explain it:** I isolated the player, then the network stream, then repeated the runs, before blaming the provider for the gaps.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Record the voice-clone sample on Windows or a phone, not through WSL `[process]`
+- **Decision:** `SETUP.md` tells Roman to read `data/clone_script.md` and record on Windows or a phone, at best quality and 44.1/48 kHz, not with the repo's `Recorder`.
+- **Why:** The `Recorder` captures 16 kHz through the WSLg bridge, which is enough for STT but thin for a clone.
+- **Alternatives:** Record with the repo's `Recorder`, rejected for the 16 kHz reason.
+- **How:** `SETUP.md` and `data/clone_script.md`. The script is deliberately not the 10 rating sentences, so the rating is not a replay of the sample.
+- **How to explain it:** I recorded the clone sample at a higher sample rate than the STT path, because cloning needs better audio than recognition does.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Hand the tutor only new topics (voice cloning, streaming playback), after checking the notes index `[process]`
+- **Decision:** Before offering a tutor handoff, Claude checked `learning/INDEX.md` and grepped the existing notes for generators, audio buffering and voice cloning. Finding none covered, it started the tutor subagent in the background. The subagent wrote two new notes, `learning/notes/2026-10-07-voice-cloning-consent-and-security.md` and `learning/notes/2026-10-07-streaming-audio-generators-and-buffering.md`. It also added cross-references to two existing notes (`2026-10-03-audio-on-linux-and-wsl.md`, `2026-10-03-voice-latency-and-tts-normalization.md`) instead of repeating them.
+- **Why:** The index says the tutor should add to or link existing notes rather than duplicate them. The grep showed only an unrelated `@contextmanager` mention of `yield` and no notes on buffering or cloning.
+- **Alternatives:** none discussed.
+- **How:** `learning/INDEX.md` (two new lines, two updated lines), the tutor brief that followed `.claude/agents/tutor.md`, and a coverage checklist returned by the subagent. Claude then spot-checked the new notes' headings and source counts.
+- **How to explain it:** I check what my learning notes already cover before writing new ones, so the notes stay a non-duplicated study guide for the project.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Clone voice becomes the default TTS, chosen by informal listening, not the blind rating `[provider]`
+- **Decision:** Roman's cloned voice is the default assistant voice: `.env` gets `TTS_PROVIDER=elevenlabs` and `ELEVENLABS_VOICE=clone`. The 30-clip blind rating was skipped.
+- **Why:** Roman listened to the loop and said the clone "works as good as Brian's and it's a bit natural". He had no time to rate 30 clips.
+- **Alternatives:** Brian (the premade ElevenLabs voice, the previous pick) was kept as the `ready` voice. Azure TTS was used for live use before. The blind rating (`python compare_speech.py rate`) was left undone.
+- **How:** Three lines appended to `.env` (keys and voice IDs untouched). `BUILD_PLAN.md` step 2.6b is marked `[x] 2026-10-07`. The skipped rating is recorded there and in "Changes to the plan". The clips stay in `runs/tts_compare_20261007-152803.json` and `audio/tts_compare/`.
+- **How to explain it:** "I picked my cloned voice by listening, and I'm clear that it's one listener's informal judgment. The only blind scores I have are Azure vs Brian."
+- **Decided by:** Roman
+
+### 2026-10-07 · Scribe (ElevenLabs) is the default STT, with Azure as fallback `[provider]`
+- **Decision:** `STT_PROVIDER=elevenlabs` is added to `.env`, so Scribe is the default speech recognition. Azure stays the automatic fallback.
+- **Why:** Claude's stated reason is that 2.6a found Scribe more accurate than Azure. Roman did not discuss this in the turn.
+- **Alternatives:** Azure STT as the default (the fallback only now). No other alternatives were discussed.
+- **How:** `STT_PROVIDER=elevenlabs` in `.env`, with the comment "Scribe v2 for STT (Azure stays the fallback)". The fallback logic is in `providers.py`.
+- **How to explain it:** "I measured Scribe against Azure on Georgian speech, and Scribe won, so it's the default and Azure covers failures."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-07 · Skipped blind rating is recorded as "informal listening, one listener" `[process]`
+- **Decision:** `BUILD_PLAN.md` states that the clone has no blind score. It is to be described as "informal listening, one listener" in the README or a demo. The only blind numbers cited are 2.6a's (Azure vs Brian).
+- **Why:** Claude's stated reason is to avoid overclaiming evidence that doesn't exist. This matches the earlier decision to weaken unsupported claims.
+- **Alternatives:** none discussed.
+- **How:** An added "Result" bullet under step 2.6b in `BUILD_PLAN.md`, plus an entry in "Changes to the plan".
+- **How to explain it:** "I record what I didn't measure as well as what I did, so I don't claim a blind test I never ran."
+- **Decided by:** Claude (unconfirmed)
+```

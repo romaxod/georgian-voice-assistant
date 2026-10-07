@@ -2,8 +2,9 @@
 
     stt   Roman's recordings (1.5) through Azure → Scribe v2 → Scribe v2 + keyterms. Prints word error
           rate (WER) and whether each English term came through, and saves runs/stt_compare_<time>.json.
-    tts   The same 10 Georgian sentences through Azure Giorgi and the ElevenLabs voice. Saves the clips
-          to audio/tts_compare/ and the timings (first audio, total) to runs/tts_compare_<time>.json.
+    tts   The same 10 Georgian sentences through Azure Giorgi, the premade ElevenLabs voice and (step 2.6b)
+          Roman's ElevenLabs clone. Saves the clips to audio/tts_compare/ and the timings (first audio,
+          total) to runs/tts_compare_<time>.json. --no-clone leaves the clone out (2.6a's two columns).
     rate  Blind rating of the latest tts run: plays the clips in random order without saying which
           provider made each, asks pronunciation and naturalness (1–5), then reveals the averages.
 
@@ -12,7 +13,7 @@ as a failure, not be quietly answered by Azure. Both TTS providers get the same 
 voice loop sends, so the comparison is "what the caller would hear" from each.
 
 Run:  python compare_speech.py stt [--wav audio/q1.wav ...]
-      python compare_speech.py tts
+      python compare_speech.py tts [--no-clone]
       python compare_speech.py rate
 """
 import argparse
@@ -128,16 +129,21 @@ def compare_stt(wavs: list[Path]) -> None:
     print(f"\nsaved {save('stt_compare', {'keyterms': KEYTERMS, 'results': results}).relative_to(Path.cwd())}")
 
 
-def compare_tts() -> None:
+def compare_tts(clone: bool = True) -> None:
     answers = {e["id"]: e["answer"] for e in json.loads((Path(__file__).parent / "data/faq.json").read_text("utf-8"))}
-    providers: list[Provider] = [AzureTTS("giorgi"), ElevenLabsTTS()]
+    # All voices are synthesized fresh in every run, even the ones rated before: the rating has to
+    # compare them in one sitting on one scale, and the clips of an older run may come from older models.
+    voices: dict[str, Provider] = {"azure": AzureTTS("giorgi"), "elevenlabs": ElevenLabsTTS("ready")}
+    if clone:
+        voices["clone"] = ElevenLabsTTS("clone")
+    providers = list(voices.values())
     CLIPS.mkdir(parents=True, exist_ok=True)
     clips = []
     for n, faq_id in enumerate(TTS_SENTENCES, 1):
         text = answers[faq_id]
         spoken = speakable(text)
         print(f"s{n:02} {text}")
-        for key, provider in zip(("azure", "elevenlabs"), providers):
+        for key, provider in voices.items():
             timing: dict[str, float] = {}
             start = time.perf_counter()
             try:
@@ -210,7 +216,8 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     stt = sub.add_parser("stt", help="STT on Roman's recordings: Azure, Scribe v2, Scribe v2 + keyterms")
     stt.add_argument("--wav", type=Path, nargs="+", default=[AUDIO_DIR / name for name in RECORDINGS])
-    sub.add_parser("tts", help="synthesize the 10 test sentences with both providers")
+    tts = sub.add_parser("tts", help="synthesize the 10 test sentences with every voice")
+    tts.add_argument("--no-clone", action="store_true", help="only Azure and the premade ElevenLabs voice")
     sub.add_parser("rate", help="blind-rate the latest tts run")
     args = parser.parse_args()
     load_dotenv()
@@ -221,7 +228,7 @@ def main() -> None:
                 sys.exit(f"Error: not found: {', '.join(missing)}")
             compare_stt(args.wav)
         elif args.command == "tts":
-            compare_tts()
+            compare_tts(clone=not args.no_clone)
         else:
             rate()
     except SpeechError as e:

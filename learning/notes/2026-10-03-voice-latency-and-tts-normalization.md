@@ -131,3 +131,5 @@ mic -> Recorder -> STT ->[transcript]-> graph (understand -> lookup -> answer)
 **D. Course/video:**
 - [DeepLearning.AI, "Building AI Voice Agents for Production"](https://www.deeplearning.ai/short-courses/building-ai-voice-agents-for-production): free short course, about 1 hour, taught by Russ d'Sa and Shayne Parmelee (LiveKit) and Nedelina Teneva (RealAvatar). Lessons "Voice Agent Overview", "End-to-end Architecture", "Optimizing Latency with Code Example". Page opened; I haven't taken it.
 - Standalone YouTube video: I couldn't confirm one by search. Try "voice agent latency STT LLM TTS" or "text normalization for speech synthesis" on YouTube and check the creator before trusting it.
+
+*(added 2026-10-07)* Streaming TTS playback (first sound after about 0.6 s instead of waiting for the whole reply, gaps and buffering): see [Streaming audio playback](2026-10-07-streaming-audio-generators-and-buffering.md).

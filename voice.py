@@ -18,12 +18,18 @@ Since step 2.6a, STT and TTS come from providers.py: Azure by default, or Eleven
 an ElevenLabs voice) with Azure as the automatic fallback, chosen by TTS_PROVIDER / STT_PROVIDER in
 .env or --tts / --stt here. The loop prints which provider served each turn.
 
+Since step 2.6b the reply is played while it's still arriving (speech.play_stream): the caller's
+wait ends at the first audio, not when the whole reply has been generated. In 2.6a, playing after
+download meant up to 15 s of silence on a slow ElevenLabs day. ELEVENLABS_VOICE=clone in .env (or
+--el-voice clone) makes ElevenLabs speak in Roman's cloned voice.
+
 Run:  python voice.py                         push-to-talk: Enter starts recording, Enter stops it.
                                               Typing a question instead also works (skips STT).
       python voice.py --wav audio/q1.wav ...  use recorded files as the questions, one turn each
       python voice.py --no-play               don't play the reply (it's still synthesized and saved)
       python voice.py --voice eka             the other Georgian voice (Azure)
       python voice.py --tts elevenlabs --stt elevenlabs   ElevenLabs, falling back to Azure
+      python voice.py --tts elevenlabs --el-voice clone   the reply in Roman's cloned voice
       python voice.py --stt elevenlabs --no-keyterms      Scribe v2 without the domain keyterms
       python voice.py --simulate-tool-error always   same break tests as graph.py
 """
@@ -40,8 +46,9 @@ from dotenv import load_dotenv
 
 from faq_client import FaqClient
 from graph import MAX_STEPS, chat_graph, ensure_faq_server, new_config, read_line, run_turn
-from providers import PROVIDERS, Provider, make_stt, make_tts
-from speech import (AUDIO_DIR, SAMPLE_RATE, SAMPLE_WIDTH, VOICES, Recorder, SpeechError, peak_level, play,
+from elevenlabs_api import TTS_RATE, pcm_to_wav
+from providers import ELEVENLABS_VOICES, PROVIDERS, Provider, make_stt, make_tts
+from speech import (AUDIO_DIR, SAMPLE_RATE, SAMPLE_WIDTH, VOICES, Recorder, SpeechError, peak_level, play_stream,
                     speech_config, wav_info, write_wav)
 from speech_text import leftover_latin, speakable
 
@@ -93,26 +100,34 @@ def speak(text: str, tts: Provider, args: argparse.Namespace, times: dict) -> No
     if leftover_latin(spoken):
         print(f"  [speech-text] still in Latin letters, the voice will mangle: {leftover_latin(spoken)}")
 
-    start = time.perf_counter()
-    timing: dict[str, float] = {}
-    try:
-        audio = tts.synthesize(spoken, timing)
-    except SpeechError as e:
-        print(f"  [tts] {e}  (the reply is only on screen this turn)")
-        return
-    times["tts"] = time.perf_counter() - start
-    if "first_audio" in timing:
-        print(f"  [tts] {tts.used}: first audio after {timing['first_audio']:.2f} s, all of it after {times['tts']:.2f} s")
-    REPLY_WAV.write_bytes(audio)
     if args.no_play:
+        start = time.perf_counter()
+        try:
+            pcm = b"".join(tts.stream(spoken))
+        except SpeechError as e:
+            print(f"  [tts] {e}  (the reply is only on screen this turn)")
+            return
+        times["tts"] = time.perf_counter() - start
+        REPLY_WAV.write_bytes(pcm_to_wav(pcm[: len(pcm) // 2 * 2], TTS_RATE))
+        print(f"  [tts] {tts.used}: all audio after {times['tts']:.2f} s (not played)")
         return
+
     start = time.perf_counter()
     try:
-        play(REPLY_WAV)
+        played = play_stream(tts.stream(spoken), TTS_RATE)
     except SpeechError as e:
-        print(f"  [play] {e}")
+        # It may have broken mid-reply, after the caller heard the start; the whole reply is on screen
+        print(f"  [tts] {e}  (the full reply is on screen)")
         return
-    times["playback"] = time.perf_counter() - start
+    if "first_audio" not in played:
+        print(f"  [tts] {tts.used} sent no audio")
+        return
+    # The caller's wait ends when the sound starts, so that's what counts as "tts" in print_times
+    times["tts"] = played["first_audio"]
+    times["playback"] = time.perf_counter() - start - played["first_audio"]
+    gaps = f", {len(played['gaps'])} gap(s) of {sum(played['gaps']):.1f} s" if played["gaps"] else ", no gaps"
+    print(f"  [tts] {tts.used}: sound after {played['first_audio']:.2f} s{gaps}")
+    REPLY_WAV.write_bytes(pcm_to_wav(played["pcm"][: len(played["pcm"]) // 2 * 2], TTS_RATE))
 
 
 def print_times(times: dict) -> None:
@@ -160,7 +175,7 @@ async def voice_turn(wav: Path | None, typed: str, graph, config: dict, faq: Faq
 async def voice_chat(args: argparse.Namespace) -> None:
     load_dotenv()
     speech_config()  # fail now, not after the first recording, if the Azure key (also the fallback) is missing
-    stt, tts = make_stt(args.stt, keyterms=not args.no_keyterms), make_tts(args.tts, args.voice)
+    stt, tts = make_stt(args.stt, keyterms=not args.no_keyterms), make_tts(args.tts, args.voice, args.el_voice)
     started = time.perf_counter()
     async with FaqClient() as faq:
         graph = chat_graph(faq, args.simulate_tool_error, started)
@@ -200,6 +215,8 @@ def main() -> None:
     parser.add_argument("--voice", choices=VOICES, default="giorgi", help="Azure voice (also the fallback's)")
     parser.add_argument("--tts", choices=PROVIDERS, help="TTS provider (default: TTS_PROVIDER in .env, else azure)")
     parser.add_argument("--stt", choices=PROVIDERS, help="STT provider (default: STT_PROVIDER in .env, else azure)")
+    parser.add_argument("--el-voice", choices=ELEVENLABS_VOICES,
+                        help="ElevenLabs voice: ready (premade) or clone (default: ELEVENLABS_VOICE in .env, else ready)")
     parser.add_argument("--no-keyterms", action="store_true", help="don't send Scribe the domain keyterms")
     parser.add_argument("--no-play", action="store_true", help="don't play the reply")
     parser.add_argument("--simulate-tool-error", choices=["once", "always"],

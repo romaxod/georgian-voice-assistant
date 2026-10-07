@@ -2,9 +2,11 @@
 switch decides which company is behind each one, with Azure as the automatic fallback.
 
     TTS_PROVIDER=elevenlabs   STT_PROVIDER=elevenlabs   in .env (or --tts / --stt on voice.py)
+    ELEVENLABS_VOICE=clone    Roman's cloned voice instead of the premade one (or --el-voice on voice.py)
 
-Every provider has the same two-line interface: TTS.synthesize(text, timing) -> WAV bytes, and
-STT.transcribe(path) -> text. Both raise SpeechError. voice.py never imports speech.py's or
+Every provider has the same small interface: TTS.synthesize(text, timing) -> WAV bytes,
+TTS.stream(text) -> raw 24 kHz samples chunk by chunk (step 2.6b, for playing while the reply is
+still being generated), and STT.transcribe(path) -> text. All of them raise SpeechError. voice.py never imports speech.py's or
 elevenlabs_api.py's functions directly, so adding a third provider means one new class here.
 
 WithFallback wraps a primary provider and a backup with the same interface. If the primary fails,
@@ -18,11 +20,14 @@ and tested on (1.5, 2.5), and its F0 tier is free, so it can't run out of credit
 import json
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 import elevenlabs_api
 import speech
-from speech import VOICES, SpeechError
+from speech import VOICES, SpeechError, wav_pcm
+
+ELEVENLABS_VOICES = tuple(elevenlabs_api.VOICE_SETTINGS)  # "ready" (premade, Brian) / "clone" (Roman's voice)
 
 PROVIDERS = ("azure", "elevenlabs")
 FAQ_JSON = Path(__file__).parent / "data" / "faq.json"
@@ -59,13 +64,25 @@ class AzureTTS(Provider):
     def synthesize(self, text: str, timing: dict) -> bytes:
         return speech.synthesize(text, self.voice, timing)
 
+    def stream(self, text: str) -> Iterator[bytes]:
+        # One chunk: Azure finishes a reply in ~1.2 s (2.6a), so streaming it would save little.
+        # The rate check keeps the promise that every TTS streams 24 kHz, so the player can rely on it.
+        pcm, rate = wav_pcm(speech.synthesize(text, self.voice))
+        if rate != elevenlabs_api.TTS_RATE:
+            raise SpeechError(f"Azure sent {rate} Hz audio, expected {elevenlabs_api.TTS_RATE}")
+        yield pcm
+
 
 class ElevenLabsTTS(Provider):
-    def __init__(self):
-        self.name = f"elevenlabs {os.getenv('ELEVENLABS_MODEL') or elevenlabs_api.TTS_MODEL}"
+    def __init__(self, voice: str = "ready"):
+        self.voice = voice
+        self.name = f"elevenlabs {os.getenv('ELEVENLABS_MODEL') or elevenlabs_api.TTS_MODEL} {voice}"
 
     def synthesize(self, text: str, timing: dict) -> bytes:
-        return elevenlabs_api.synthesize(text, timing)
+        return elevenlabs_api.synthesize(text, timing, self.voice)
+
+    def stream(self, text: str) -> Iterator[bytes]:
+        return elevenlabs_api.stream(text, self.voice)
 
 
 class AzureSTT(Provider):
@@ -117,6 +134,26 @@ class WithFallback(Provider):
     def transcribe(self, path: Path) -> str:
         return self._call("transcribe", path)
 
+    def stream(self, text: str) -> Iterator[bytes]:
+        """Like _call, but the reply is played while it arrives: the backup takes over only if the primary
+        fails before its first chunk. After that the caller has already heard part of the reply, and
+        starting again from the top in the other voice would be worse than stopping where it broke."""
+        if not self.primary_off:
+            started = False
+            try:
+                for chunk in self.primary.stream(text):
+                    started, self._used = True, self.primary.name
+                    yield chunk
+                return
+            except SpeechError as e:
+                self.primary_off = not e.retryable
+                if started:
+                    raise
+                then = "for the rest of the session" if self.primary_off else "for this turn"
+                print(f"  [tts] {self.primary.name}: {e}\n  [tts] using {self.backup.name} {then}")
+        self._used = self.backup.name
+        yield from self.backup.stream(text)
+
 
 def choose(kind: str, name: str | None) -> str:
     name = name or os.getenv(f"{kind.upper()}_PROVIDER") or "azure"
@@ -125,10 +162,17 @@ def choose(kind: str, name: str | None) -> str:
     return name
 
 
-def make_tts(name: str | None = None, azure_voice: str = "giorgi") -> Provider:
-    """The TTS for `name` ("azure" / "elevenlabs"), or TTS_PROVIDER from .env, or Azure."""
+def make_tts(name: str | None = None, azure_voice: str = "giorgi", elevenlabs_voice: str | None = None) -> Provider:
+    """The TTS for `name` ("azure" / "elevenlabs"), or TTS_PROVIDER from .env, or Azure. The ElevenLabs
+    voice is `elevenlabs_voice`, or ELEVENLABS_VOICE from .env, or the premade "ready" voice."""
     azure = AzureTTS(azure_voice)
-    return azure if choose("tts", name) == "azure" else WithFallback(ElevenLabsTTS(), azure, "tts")
+    if choose("tts", name) == "azure":
+        return azure
+    voice = elevenlabs_voice or os.getenv("ELEVENLABS_VOICE") or "ready"
+    if voice not in ELEVENLABS_VOICES:
+        raise SpeechError(f"unknown ELEVENLABS_VOICE {voice!r}; use one of {', '.join(ELEVENLABS_VOICES)}",
+                          retryable=False)
+    return WithFallback(ElevenLabsTTS(voice), azure, "tts")
 
 
 def make_stt(name: str | None = None, keyterms: bool = True) -> Provider:

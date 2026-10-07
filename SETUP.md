@@ -243,13 +243,13 @@ Changing one thing per stage means that when something sounds worse, you know wh
 
 **Stage 3: your voice**
 5. Upgrade to Starter if the free plan doesn't include cloning.
-6. **Record about 2 minutes** of natural Georgian:
+6. **Record about 2 minutes** of natural Georgian. Read [data/clone_script.md](data/clone_script.md) (written for this; not the rating sentences). Record on **Windows or a phone** (Sound Recorder, Audacity at 44.1/48 kHz, or a voice memo at best quality), not through WSL: the repo's `Recorder` captures 16 kHz through the WSLg bridge, enough for STT but thin for a clone.
    - Use a quiet room with no echo, and the same mic and distance throughout.
    - Speak in the tone the assistant should have: friendly and calm, not reading-aloud stiff.
    - Avoid background music, other voices, and long silences.
    - Save it as WAV or high-quality MP3. Keep the file **out of the repo**, since `audio/` is gitignored.
-7. Voices → Add voice → **Instant Voice Clone**: upload the file and confirm you have the right to clone this voice (it's yours).
-8. Copy the new voice ID and change `ELEVENLABS_VOICE_ID` in `.env`. Keep the ready-made voice's ID in a comment, so you can compare the two.
+7. Voices (left menu) → the **+** button → **Instant Voice Clone**: upload the file, name it, and confirm you have the right and consent to clone this voice (it's yours). ElevenLabs asks for ~1–2 min without reverb or background noise ([docs](https://elevenlabs.io/docs/product-guides/voices/voice-cloning/instant-voice-cloning)).
+8. Copy the new voice ID into `.env` as **`ELEVENLABS_CLONE_VOICE_ID=...`**, and keep `ELEVENLABS_VOICE_ID` as the premade voice: the three-voice comparison needs both. `ELEVENLABS_VOICE=clone` in `.env` (or `voice.py --el-voice clone`) makes the voice loop use the clone.
 
 **Rules**
 - Never commit or share the API key or the voice ID. A clone of your voice is a security risk; banks deal with voice-fraud deepfakes.
