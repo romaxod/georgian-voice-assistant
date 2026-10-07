@@ -1,6 +1,6 @@
 # Designing an LLM eval test set
 
-Step 3.1, `data/eval_cases.yaml` + `eval_cases.py`. Sources opened 2026-10-07. Related: [failure routes and per-route eval cases](2026-10-03-failure-handling-and-guardrails.md) (exercise 5), [WER, test sets and leakage for STT](2026-10-04-evaluating-speech-providers.md). The loader and YAML mechanics are in [YAML data files and Pydantic](2026-10-07-yaml-data-files-and-pydantic-validation.md). Step 3.2 (runner, judge bias) will extend this note.
+Step 3.1, `data/eval_cases.yaml` + `eval_cases.py`. Sources opened 2026-10-07. Related: [failure routes and per-route eval cases](2026-10-03-failure-handling-and-guardrails.md) (exercise 5), [WER, test sets and leakage for STT](2026-10-04-evaluating-speech-providers.md). The loader and YAML mechanics are in [YAML data files and Pydantic](2026-10-07-yaml-data-files-and-pydantic-validation.md). The runner, judge reliability, noise and latency are in [Running evals: rules, LLM judges, noise and latency](2026-10-08-running-evals-and-llm-judges.md).
 
 ## 1. What you're learning, and why it matters
 

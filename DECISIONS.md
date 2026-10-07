@@ -1130,3 +1130,75 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `amb-price` in `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md)
 - **How to explain it:** I know one case overlaps with a prompt example, so I flagged it and made the other ambiguous cases use unseen wording.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Eval runner scores with rules first and a judge only on turns with a `judge:` question `[architecture]`
+- **Decision:** `run_evals.py` checks each turn with plain-code rules (`outcome`, `intent`, `tool_called`, `facts_include`, `lookup_attempts`, `reply_has`, `reply_lacks`). An LLM judge runs only on the 8 turns that have a `judge:` yes/no question. A case passes only if all its turns pass.
+- **Why:** The rules are free and deterministic. The judge is for what rules can't decide.
+- **Alternatives:** none discussed (a judge on every turn is the implied alternative).
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `--no-judge` runs rules only.
+- **How to explain it:** "I used cheap deterministic checks wherever possible and kept the LLM judge for the few questions code can't answer."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Judge is pinned `gpt-5.5-2026-04-23`, stronger than and different from the graph's model `[provider]`
+- **Decision:** `JUDGE_MODEL` is the dated snapshot `gpt-5.5-2026-04-23`. The graph under test uses `gpt-5.4-mini`.
+- **Why:** The dated snapshot stops verdicts changing when an alias is updated. A different, stronger model avoids self-preference.
+- **Alternatives:** none discussed (the graph's own model, or an unpinned alias, is the implied alternative).
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `JUDGE_MODEL`, with the model names recorded in each results file.
+- **How to explain it:** "The judge is a pinned, stronger model that isn't the one being graded, so scores are reproducible and not biased toward its own output."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Judge answers with reasoning first, and the reasoning is saved `[code]`
+- **Decision:** The judge returns structured output `Verdict{reasoning, passed}`. It sees the conversation and the FAQ entries the assistant had. The reasoning is stored in the results file.
+- **Why:** A wrong verdict can then be spotted and argued with.
+- **Alternatives:** none discussed.
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `Verdict`, `judge_turn`, `runs/eval_<time>.json`.
+- **How to explain it:** "Every judge verdict comes with its reasoning, so I can audit it rather than trust a bare pass/fail."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Two rule checks on every turn: Georgian reply and no false action claim `[code]`
+- **Decision:** Every turn must have ≥50% Georgian letters in the reply. It must also not match `graph.py`'s `FALSE_ACTION_CLAIM` pattern.
+- **Why:** The ≥50% threshold is stated in the plan entry, but the reason for 50% isn't stated. Reusing the graph's own regex keeps the runner and the graph consistent.
+- **Alternatives:** none discussed.
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `graph.false_action_claim`.
+- **How to explain it:** "Two universal checks apply to every reply, and the false-claim check shares the graph's own regex."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Each case gets a fresh graph and thread; cases run one at a time `[code]`
+- **Decision:** Each case builds its own graph with its own `InMemorySaver` and thread, using the real MCP server. Cases run sequentially, not in parallel.
+- **Why:** Latency is measured per turn, and parallel calls would inflate it and share one MCP connection. Isolated threads keep cases from affecting each other (the isolation reason is implied, not stated).
+- **Alternatives:** Parallel runs, rejected for the latency and shared-connection reasons above.
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `setup.tool` selects `failing_lookup` or a "down" lookup.
+- **How to explain it:** "I run cases serially on purpose so the latency numbers are honest."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Each results file records git commit, models, and prompt/case hashes `[code]`
+- **Decision:** `runs/eval_<time>.json` stores the git commit, `model`, `judge_model`, `cases_sha`, `prompts_sha` and the args.
+- **Why:** Two runs can be compared knowing what changed between them.
+- **Alternatives:** none discussed.
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); the `meta` block of the results JSON.
+- **How to explain it:** "Every eval run is stamped with the code, prompt and test-set versions, so a score change can be traced to its cause."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · `--repeat 3` baseline of 69/75 (92%) because the model isn't deterministic `[process]`
+- **Decision:** The baseline is `python run_evals.py --repeat 3`, giving 69/75 (92%). A single run was 24/25 cases, 137/140 checks, about 1 minute and $0.03.
+- **Why:** The model isn't deterministic, so one run isn't a reliable score.
+- **Alternatives:** A single run, which was done as a smoke check but not used as the baseline.
+- **How:** `run_evals.py` → [docs](docs/code/run_evals.py.md); `--repeat N`; results in `runs/`.
+- **How to explain it:** "Because outputs vary, I report a three-run baseline rather than one lucky pass."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Verify 3.2 by break-testing the judge and a wrong API key, then mark it done `[process]`
+- **Decision:** A scratch script fed the judge a passive false-claim reply and an honest reply. A wrong `OPENAI_API_KEY` was also tried. Step 3.2 was then marked `[x]` in `BUILD_PLAN.md`.
+- **Why:** This shows the judge catches a false claim that the regex misses (regex=None, judge failed it) and passes the honest reply. The wrong-key result isn't visible in the excerpt.
+- **Alternatives:** none discussed.
+- **How:** A scratch script in the session scratchpad, not in the repo; `BUILD_PLAN.md`.
+- **How to explain it:** "I tested the judge with hand-written good and bad replies. It caught a passive false claim that my regex missed."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Step 3.2 learning gets a new note plus a cross-link, not an extension of the 3.1 note `[process]`
+- **Decision:** The tutor writes one new note, `learning/notes/2026-10-08-running-evals-and-llm-judges.md`, for the eval runner, LLM-as-judge, judge bias, reproducibility and latency. The 3.1 note `learning/notes/2026-10-07-designing-an-llm-eval-test-set.md` gets its "Step 3.2 ... will extend this note" sentence replaced with a link to the new note. The new note is added to `learning/INDEX.md`.
+- **Why:** Not stated. The 3.1 note had promised that step 3.2 would extend it, and Claude chose a separate note instead. Before delegating, Claude grepped the existing notes for the planned concepts and left out the dotenv lookup because it was already covered.
+- **Alternatives:** Appending to the 3.1 note, as that note's own sentence implied. The excerpt doesn't say why this was rejected.
+- **How:** Agent call to the tutor, following `.claude/agents/tutor.md`. It edits `learning/INDEX.md` and the two notes above. Claude then spot-checked the note with `grep` for headings and for the numbers 69/75, pass@k and pass^k.
+- **How to explain it:** "Each build step gets its own learning note, linked from the earlier one, so I can trace how my understanding of evals grew from test set to runner."
+- **Decided by:** Claude (unconfirmed)
