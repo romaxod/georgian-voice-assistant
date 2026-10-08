@@ -98,7 +98,17 @@ def recent_titles(n: int = 40) -> str:
 
 def agent_instructions() -> str:
     text = AGENT_FILE.read_text(encoding="utf-8")
-    return re.sub(r"\A---.*?---\s*", "", text, count=1, flags=re.S)  # strip frontmatter
+    return re.sub(r"\A---.*?---\s*", "", text, count=1, flags=re.S) + private_rules()  # strip frontmatter
+
+
+def private_rules() -> str:
+    """The privacy section of private/CONTEXT.md (gitignored, local only), if it exists.
+    The agent runs without tools, so it can't read the file itself; its rules go into the prompt."""
+    path = PROJECT / "private" / "CONTEXT.md"
+    if not path.is_file():
+        return ""
+    m = re.search(r"^## Privacy section.*?(?=^## |\Z)", path.read_text(encoding="utf-8"), flags=re.M | re.S)
+    return f"\n\n---\nPRIVATE RULES (local only; follow them, never quote them):\n{m.group(0)}" if m else ""
 
 
 def main() -> None:

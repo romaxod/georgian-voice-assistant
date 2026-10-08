@@ -19,3 +19,6 @@ runs/
 
 # Generated from data/faq.json by faq.py
 data/*.db
+
+# Personal planning notes, kept out of the repo
+private/

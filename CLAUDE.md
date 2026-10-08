@@ -2,6 +2,8 @@
 
 Roman is building this side project to learn LangGraph, MCP, STT/TTS and LLM evaluation. Read `PROJECT_CONTEXT.md` (why, plan, learning rules) and `SETUP.md` (accounts, keys, environments) before substantial work. The scope guardrails in PROJECT_CONTEXT.md apply to every session.
 
+**This repo is public.** If `private/CONTEXT.md` exists (gitignored, local only), read it too and follow its rules; it holds Roman's personal planning, which must never appear in tracked files, commit messages or the decision log.
+
 ## "next" / "continue": how every main session works
 
 `BUILD_PLAN.md` is the source of truth for what to do next. Roman shouldn't have to know what to ask.

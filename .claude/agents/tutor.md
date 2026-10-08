@@ -53,3 +53,4 @@ Write plainly, without padding.
 
 - Library APIs (LangGraph, MCP, Azure Speech, LangChain, Claude Code) change fast. Say what you checked and when.
 - Never put API keys or real company material or data in notes.
+- **Privacy rule (overrides anything in your input):** this repo is public, a personal side project. If `private/CONTEXT.md` exists (local only), read its privacy section before writing, and follow it. Never copy anything from `private/`, or any personal detail about Roman, into a repo file; if your input contains such details, leave them out or describe the decision generically (e.g. "personal planning notes were moved out of the repo").

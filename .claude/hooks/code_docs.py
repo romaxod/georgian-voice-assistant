@@ -57,8 +57,20 @@ def documented_hash(doc: Path) -> str | None:
     return m.group(2) if m else None
 
 
+
+def private_rules() -> str:
+    """The privacy section of private/CONTEXT.md (gitignored, local only), if it exists.
+    The agent runs without tools, so it can't read the file itself; its rules go into the prompt."""
+    path = PROJECT / "private" / "CONTEXT.md"
+    if not path.is_file():
+        return ""
+    m = re.search(r"^## Privacy section.*?(?=^## |\Z)", path.read_text(encoding="utf-8"), flags=re.M | re.S)
+    return f"\n\n---\nPRIVATE RULES (local only; follow them, never quote them):\n{m.group(0)}" if m else ""
+
+
 def build_prompt(src: str, doc: Path) -> str:
     instructions = re.sub(r"\A---.*?---\s*", "", AGENT_FILE.read_text(encoding="utf-8"), count=1, flags=re.S)
+    instructions += private_rules()
     source = (PROJECT / src).read_text(encoding="utf-8", errors="replace")[:MAX_SOURCE]
     numbered = "\n".join(f"{i:4} | {line}" for i, line in enumerate(source.splitlines(), 1))
     previous = doc.read_text(encoding="utf-8") if doc.exists() else "(none: first version)"

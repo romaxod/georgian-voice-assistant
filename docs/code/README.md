@@ -5,7 +5,7 @@ One doc per code file, explaining every part of it. Written automatically by the
 | File | What it is |
 |---|---|
 | [`.claude/hooks/code_docs.py`](_claude/hooks/code_docs.py.md) | Stop-hook worker that finds code files whose content changed and asks a headless Claude session to (re)write one Markdown doc per file under `docs/code/`, then rebuilds the docs index. |
-| [`.claude/hooks/decision_logger.py`](_claude/hooks/decision_logger.py.md) | Worker script behind the Stop hook: it reads the last turn of a Claude Code session, asks a headless Sonnet to extract decisions, and appends them to `DECISIONS.md`. |
+| [`.claude/hooks/decision_logger.py`](_claude/hooks/decision_logger.py.md) | Stop-hook worker that reads the last turn of a Claude Code session, asks a headless Sonnet to extract project decisions, and appends them to `DECISIONS.md`. |
 | [`.claude/hooks/document-code.sh`](_claude/hooks/document-code.sh.md) | A Stop-hook wrapper that skips itself inside child Claude sessions and otherwise runs `code_docs.py`, which rewrites the docs for code files that changed this turn. |
 | [`.claude/hooks/log-decisions.sh`](_claude/hooks/log-decisions.sh.md) | A Stop hook wrapper that starts the headless decision logger (`decision_logger.py`) after each Claude turn, unless it is running inside the logger's own child session. |
 | [`.claude/settings.json`](_claude/settings.json.md) | Project-level Claude Code settings that register two asynchronous Stop hooks, one that logs decisions and one that updates the code docs, each time Claude finishes a turn. |
@@ -27,3 +27,4 @@ One doc per code file, explaining every part of it. Written automatically by the
 | [`speech_smoke.py`](speech_smoke.py.md) | Command-line wrapper (`record`, `stt`, `tts`, `play`) around the speech functions in `speech.py`, used to smoke-test Azure Speech in Georgian from WSL. |
 | [`speech_text.py`](speech_text.py.md) | Rewrites a reply into text the Azure Georgian voice can pronounce (prices, times, symbols, English terms), just before TTS, while the on-screen text stays unchanged. |
 | [`voice.py`](voice.py.md) | Push-to-talk voice front end for the ჯიხვი assistant: it records or reads a question, transcribes it (Azure or ElevenLabs), runs it through the LangGraph + MCP pipeline, rewrites the reply for speech, streams it to the speaker as it is synthesized, and prints per-stage timings. |
+| [`voice_evals.py`](voice_evals.py.md) | Step 3.4 voice check: runs spoken versions of eval cases through Azure and Scribe STT, then through the same graph and checks as `run_evals.py`, and compares each result with the typed text to show how STT errors reach the reply. |

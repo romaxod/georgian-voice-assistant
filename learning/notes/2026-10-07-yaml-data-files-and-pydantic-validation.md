@@ -43,6 +43,16 @@ Break test (copy of the file): `reply_hass` typo, outcome `handoff:gave_up`, FAQ
 - **`ruamel.yaml`** (YAML 1.2, keeps comments on write) and **StrictYAML** (no implicit typing) fix the `no` -> `False` surprises (named in [Real Python's YAML tutorial](https://realpython.com/python-yaml/)); we only read, so PyYAML is enough.
 - **TOML** (`tomllib`, stdlib) suits config; deeply nested lists of cases are clumsier.
 
+## Copying a validated object: `model_copy(update=...)` vs `model_validate` *(added 2026-10-08)*
+
+**Problem:** `voice_evals.py` needs the same eval case with only its first `user` turn replaced by an STT transcript. Build it again from scratch, or copy and patch?
+
+- `case.model_copy(update={"user": text})` returns a copy with those fields replaced. It is **shallow**: nested lists and objects are shared with the original unless you pass `deep=True`. We replace `turns` with a new list, so nothing shared gets mutated.
+- **`update` skips validation.** The Pydantic page doesn't spell this out, so I checked locally: with `user: str = Field(min_length=1)`, `model_copy(update={"user": ""})` gives `user == ''` with no error, while `Model.model_validate({**obj.model_dump(), "user": ""})` raises `ValidationError`. A copy can therefore break the rules the file loader enforced.
+- In `voice_evals.py` that is safe because an empty transcript is handled before the copy (reported as `not_heard`, graph not run). Remember that guard if you reuse the pattern.
+- Use `model_validate` on a modified `model_dump()` when the new value comes from outside and the rules must hold. Use `model_copy` when you control the value and want a cheap copy.
+- Source (opened 2026-10-08): [Pydantic Models, model copy section](https://pydantic.dev/docs/validation/latest/concepts/models/) confirms `update=` and shallow vs `deep=True`; the no-validation behaviour is from the run above.
+
 ## Sources (opened 2026-10-07)
 
 - [PyYAML documentation](https://pyyaml.org/wiki/PyYAMLDocumentation): the `yaml.load` warning and `safe_load`.

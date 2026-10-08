@@ -1202,3 +1202,259 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** Agent call to the tutor, following `.claude/agents/tutor.md`. It edits `learning/INDEX.md` and the two notes above. Claude then spot-checked the note with `grep` for headings and for the numbers 69/75, pass@k and pass^k.
 - **How to explain it:** "Each build step gets its own learning note, linked from the earlier one, so I can trace how my understanding of evals grew from test set to runner."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Fix `act-change-plan` by telling the understand prompt to keep the customer's words and add the FAQ's term `[code]`
+- **Decision:** Fixed the failing case `act-change-plan` with one sentence in the understand prompt (`UNDERSTAND_PROMPT` in `graph.py`): keep the customer's own key words and add the FAQ's term (`ტარიფი`, `ტარიფის შეცვლა`) when they used a different one. `პაკეტი` is marked as an add-on.
+- **Why:** The trace showed the cause one step before the reply. The understand node wrote the topic `L პაკეტი გადართვა`, which has no FAQ word, so the word-matching search never returned `plan-change`. This case was picked because it failed 5/5 and its cause was traceable. The alternatives were rarer or arguably a strict test.
+- **Alternatives:** v1 was "use the FAQ's own terms". It fixed the target (0/5 → 5/5) but broke `ord-plans` (5/5 → 0/5), because the topic became the single word `ტარიფი` and the reply said "we have L and M". Other failures were not chosen: `cs-roaming-iphone` (rare) and `amb-change` (arguably a strict expectation).
+- **How:** `graph.py` → [docs](docs/code/graph.py.md). Evidence is in `README.md#evaluation`. Runs with `--repeat 5` on the same cases sha: before 129/140, v1 127/140, v2 135/140.
+- **How to explain it:** I traced the failure to the keyword step, not the reply, fixed it with one sentence, and reran everything. That caught my first fix breaking the basic "what plans do you have?" case.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Add three held-out paraphrase cases before fixing, to guard against overfitting `[process]`
+- **Decision:** Before changing the prompt, added `ord-switch-plan`, `ord-package-to-s` and `act-switch-s` to `data/eval_cases.yaml` (now 28 cases). They are paraphrases of the `act-change-plan` request, and the baseline was rerun on that file.
+- **Why:** If the fix only taught the model the test's own words, these paraphrases would still fail. The result: all three already passed before the fix, because each had at least one FAQ word in its topic. So they show the fix caused no harm, not that it works.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md). A YAML quoting error in `act-switch-s`'s `why` field was fixed by quoting the string. Checked with `python eval_cases.py`.
+- **How to explain it:** I wrote held-out cases before the fix so I could tell a real fix from one tuned to the test. They also showed those cases couldn't prove the fix, which is why I added an ablation.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Prove the fix by removing it and running three unseen wordings `[process]`
+- **Decision:** Wrote three probe cases (`probe-m`, `probe-s-have-l`, `probe-l-to-m`) in a scratch file. Ran them 3 times each with the fix and with the sentence removed, then restored `graph.py`.
+- **Why:** The held-out cases passed even before the fix, so they couldn't show it worked. With the fix the probes found `plan-change` 9/9 times, and without it 6/9. The 3 failures had the same mechanism (`M პაკეტი გადაყვანა`).
+- **Alternatives:** none discussed. The runner needed probes appended to a copy of the full cases file with `--only`, because category coverage is checked on any file.
+- **How:** Scratch `probe_full.yaml`, `run_evals.py --only ... --repeat 3 --no-judge`. `graph.py` was restored from a saved copy and checked with `grep -c`.
+- **How to explain it:** I removed my own fix and reran unseen wordings to show it was the cause, and I admit the 9/9 vs 6/9 isn't significant on its own.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Report significance honestly in the README, with Fisher's exact test `[process]`
+- **Decision:** Added a "How sure is this?" paragraph to `README.md`. The target flip 0/5 → 5/5 has p ≈ 0.008. The totals (129 → 135 of 140) and the ablation (9/9 vs 6/9) have p ≈ 0.2 each and are not significant alone.
+- **Why:** The p-values were computed in the turn. The tutor note pointed out that small counts don't prove much, so the README says what is and isn't established.
+- **Alternatives:** none discussed.
+- **How:** `README.md`, Evaluation section. The p-values came from a Fisher's exact test computed inline with `math.comb`.
+- **How to explain it:** I say which numbers are significant and which aren't, and I rely on the repeated failure mechanism rather than the counts.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Leave `amb-change` and the `act-injection` rule bug unfixed, and list them in the README `[scope]`
+- **Decision:** Fixed only one failure in 3.3. `amb-change` ("შეცვლა მინდა" answers instead of clarifying, 2/5 after the fix) and the `act-injection` check, which also flags the correct reply "ვერ შევავსებ", are listed in the README as not fixed.
+- **Why:** The reason given is "one change at a time". `amb-change` was also called arguably too strict an expectation.
+- **Alternatives:** none discussed.
+- **How:** `README.md`, evaluation section, "not fixed" list. `BUILD_PLAN.md` step 3.3 is marked done with the result.
+- **How to explain it:** I fixed one cause and measured it, and I documented the known open failures instead of hiding them.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Start `README.md` now with only the evaluation section `[process]`
+- **Decision:** Created `README.md` holding the before/after table and the story of the fix. The full README (architecture, running, voice results) is left for step 3.5.
+- **Why:** The 3.3 "done when" requires the before/after table and the written story in the README. No README existed yet.
+- **Alternatives:** none discussed.
+- **How:** `README.md`, with a pointer to `BUILD_PLAN.md` step 3.5. The step is marked in `BUILD_PLAN.md`.
+- **How to explain it:** I wrote the evidence into the README while it was fresh, so the demo story is already there.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Voice check is a separate `voice_evals.py` that swaps the STT transcript into the first turn of an existing eval case `[architecture]`
+- **Decision:** `voice_evals.py` runs each recording as the spoken first turn of a case in `data/eval_cases.yaml`. The transcript replaces that first turn. Later turns stay typed, and `run_evals.run_case` applies the same rule and judge checks.
+- **Why:** A spoken question should get the same behavior as a typed one. A spoken run that fails where the typed run passes is therefore an STT error that reached the reply.
+- **Alternatives:** none discussed.
+- **How:** `voice_evals.py` → [docs](docs/code/voice_evals.py.md). It imports `run_case`, `case_passed`, `first_failure` and `JUDGE_MODEL` from `run_evals.py`. It replaces the first turn with pydantic `model_copy(update=...)`, which does not re-validate.
+- **How to explain it:** "I reused the exact checks from the text evals, so any difference between typed and spoken results is attributable to STT."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Each recording runs three ways: typed, Azure STT, Scribe v2 + keyterms `[process]`
+- **Decision:** Every recording is run as the typed text (baseline), `AzureSTT` (ka-GE), and `ScribeSTT` with the 18 domain `KEYTERMS`. Each spoken run is labeled against the typed run of the same repeat: `same`, `STT broke it`, `graph`, or `STT error`.
+- **Why:** The typed baseline separates STT damage from graph mistakes. Scribe with keyterms is the voice loop's default and Azure is the fallback, so both are compared on the same audio. The build plan also suggested comparing both STT providers if Scribe was tried.
+- **Alternatives:** none discussed.
+- **How:** `voice_evals.py` (label logic and `short_source`), using `providers.AzureSTT`, `providers.ScribeSTT` and `providers.KEYTERMS`.
+- **How to explain it:** "For every spoken failure I could say whether STT or the graph caused it, because I had a typed run of the same case next to it."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · STT providers called directly, without `WithFallback`, and recordings run one at a time `[code]`
+- **Decision:** The script calls the STT providers directly (as `compare_speech.py` does), with no `WithFallback`, and processes recordings sequentially. STT runs through `asyncio.to_thread` because the MCP client shares the event loop.
+- **Why:** A failed STT call has to show as a failure, not be quietly answered by the other provider. Azure F0 allows only one concurrent STT request, and latency is measured per call.
+- **Alternatives:** Using the fallback wrapper from the voice loop was implicitly rejected, since it would hide failures.
+- **How:** `voice_evals.py`.
+- **How to explain it:** "In production I want fallback, but in an evaluation I want to see each provider fail on its own."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · The graph's reply is not spoken in the voice check (no TTS) `[scope]`
+- **Decision:** `voice_evals.py` stops at the graph's text reply and does not run TTS. `python voice.py --wav <file>` is the way to run the full loop with sound.
+- **Why:** TTS doesn't change what is being checked. It was already measured in 2.6a/2.6b, and running it would spend ElevenLabs credit.
+- **Alternatives:** A full end-to-end run with audio output, kept available through `voice.py --wav`.
+- **How:** Module docstring of `voice_evals.py`.
+- **How to explain it:** "I only measured the stage under test and reused earlier TTS measurements, which also saved paid API credit."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Voice check uses the five existing step 1.5 recordings, with `record` for more `[scope]`
+- **Decision:** The default set is the five recordings from step 1.5 (q1, c1, c2, c3, c4). Each is the exact first turn of an existing eval case. `record` can add `audio/eval/<case-id>.wav` files.
+- **Why:** Not stated. The build plan asks for 5 recordings with at least 2 code-switched, and the existing five already satisfy that (four are code-switched).
+- **Alternatives:** none discussed.
+- **How:** `voice_evals.py` (`RECORDINGS` imported from `compare_speech.py`, `record` subcommand).
+- **How to explain it:** "I reused recordings I already had and made the tool accept more, so the set can grow."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Empty transcript becomes `not_heard` without calling the graph `[code]`
+- **Decision:** If STT returns an empty transcript, the row gets outcome `not_heard` and the graph is skipped.
+- **Why:** This mirrors what `voice.py` does. The excerpt gives no further reason.
+- **Alternatives:** none discussed.
+- **How:** `voice_evals.py` → [docs](docs/code/voice_evals.py.md). Break-tested with a silent `off-greeting.wav`, which showed `STT broke it`.
+- **How to explain it:** "The eval follows the live loop's behavior for silence, so the test matches production."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Voice check is verified with a wrong key, a silent file and a file with an unknown case id `[process]`
+- **Decision:** After the full run, Claude break-tested with `ELEVENLABS_API_KEY=sk_wrong`, a silent recording, and `no-such-case.wav`. The first run exposed a crash in the error-row display. Claude fixed it by setting `wer=None` and showing "STT error", then reran. The test files and the test runs' result files were deleted.
+- **Why:** To confirm that failures show as failures and that unknown files are skipped with a message. The first break test revealed the display bug.
+- **Alternatives:** none discussed.
+- **How:** `voice_evals.py` (`row.update(heard=None, wer=None, error=...)`, `wer_text`).
+- **How to explain it:** "I tried to break the tool on purpose, and it found a real bug in how errors were printed."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · README flags c2's passes as hollow instead of counting them as real passes `[process]`
+- **Decision:** In the README voice table, c2's Azure 3/3 passes are marked with an asterisk. The transcripts are nonsense and get a greeting reply, which `cs-api-key` happens to allow. The README also shows Azure 6/15 against Scribe 9/15, with typed at 12/12.
+- **Why:** The checks pass for the wrong reason. The cases allow a greeting, so a pass doesn't mean the question was understood.
+- **Alternatives:** none discussed.
+- **How:** `README.md` section "Voice check: the same cases, spoken".
+- **How to explain it:** "I reported where a passing score was misleading rather than letting the headline number look better."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Leave the voice-check failures unfixed in 3.4 and propose a "didn't catch that" fix for later `[scope]`
+- **Decision:** Step 3.4 only measures how STT errors propagate. No fix was made. The suggested first fix is a "sorry, I didn't catch that" reply when the transcript is garbled, in place of the greeting.
+- **Why:** The `--repeat 3` run showed three failure modes. One is the "ignoring you" case, where a real question gets "Hello! I can help with ჯიხვი" (c4 through Azure, 3 out of 3). The plan's "done when" only asks for a results table and one explained STT failure. Why this fix was picked first and why nothing was fixed now is not stated.
+- **Alternatives:** Fix it now, as was done for `act-change-plan` in 3.2. Not discussed for this step. A tutor exercise covers designing the fix, so it is left for Roman to try.
+- **How:** README section "Voice check: the same cases, spoken"; `BUILD_PLAN.md` 3.4 marked `[x]`. Nothing changed in `graph.py`. `voice_evals.py` → [docs](docs/code/voice_evals.py.md)
+- **How to explain it:** "The voice check showed me where STT errors get through, and I chose to measure and write them up first. The fix for the worst case, answering a garbled transcript with a greeting, is the next piece of work."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Step 3.4 learning gets a new note, and `model_copy(update=)` goes into the YAML/Pydantic note `[process]`
+- **Decision:** The tutor wrote a new note, `learning/notes/2026-10-08-stt-error-propagation-and-voice-evals.md`, covering STT error propagation and how to evaluate it. It also added a short section on `model_copy(update=...)` versus `model_validate` to `2026-10-07-yaml-data-files-and-pydantic-validation.md`. Both were linked in `learning/INDEX.md`.
+- **Why:** The new concepts were STT error propagation and paired typed-vs-spoken evaluation. `model_copy(update=)` is used in `voice_evals.py` to swap the transcript into the first turn, and it does not re-validate. That detail belongs with the existing Pydantic note. The tutor was told to link to existing notes rather than repeat them.
+- **Alternatives:** none discussed.
+- **How:** Tutor subagent run in the background, given the facts and the list of related notes. The tutor did not re-check the numbers against the run file; they came from the facts it was given.
+- **How to explain it:** "I keep a note for each new concept, linked to the earlier ones, so I can explain why WER and task success differ."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · `.env.example` lists key names only, and ElevenLabs is optional `[tooling]`
+- **Decision:** Add `.env.example` with empty values for `OPENAI_API_KEY`, `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, the ElevenLabs keys and voice IDs. `TTS_PROVIDER` and `STT_PROVIDER` default to `azure`, and `ELEVENLABS_VOICE` defaults to `ready`.
+- **Why:** A stranger needs to know which keys to set. With only the OpenAI and Azure keys the full voice loop works, because the providers default to Azure. A check with python-dotenv showed the inline comments are parsed correctly.
+- **Alternatives:** none discussed.
+- **How:** `.env.example`. The README run instructions name the same variables.
+- **How to explain it:** "The example file shows which settings exist without any real values. Azure alone is enough to run the voice loop, and ElevenLabs is an optional upgrade."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Secret scan before going public checks the real `.env` values, not just `grep -i key` `[process]`
+- **Decision:** Scan in three layers. (a) The plan's literal `git log -p | grep -i key`. (b) A pattern filter for key-shaped values (`KEY…=` or `:` followed by 20+ token characters, `sk-…`, `sk_…`). (c) A script that reads each real value from `.env` without printing it and searches all history and tracked and untracked files. Break-test the filter with planted fake keys.
+- **Why:** The raw grep gave 1355 matching lines, almost all prose such as "keyterms" and "API key", so it can't show anything on its own. The pattern filter found 0 hits and caught the planted fakes. The exact-value search found none of the `.env` values in any commit or file. Making the repo public publishes all of history, not only current files.
+- **Alternatives:** Dedicated scanners (gitleaks, trufflehog) were searched for in the existing notes but not used. Why not is not stated.
+- **How:** Ad-hoc shell and Python commands, not saved as a script. Results are in the new tutor note on making a repo public safely.
+- **How to explain it:** "I checked the history for the actual secret values and for key-shaped strings, and I broke-tested the pattern with fake keys so I knew it could fail."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Mermaid diagrams are rendered locally and the `graph` node id renamed to `lg` `[code]`
+- **Decision:** Render both README Mermaid diagrams locally with `@mermaid-js/mermaid-cli`. Rename the node id `graph` to `lg` in the architecture diagram. Fix the `understand` → `handoff` edge label to "wants a human / still unclear", after checking the routing in `graph.py`.
+- **Why:** GitHub only shows a Mermaid syntax error after the page is rendered. Local rendering found a parse error on line 3, because `graph` is a reserved word in Mermaid. The routing check showed that `understand` itself hands off when the next message is still unclear.
+- **Alternatives:** none discussed.
+- **How:** `README.md` (two `mermaid` blocks). The diagrams were extracted to the scratchpad and rendered with `npx @mermaid-js/mermaid-cli`.
+- **How to explain it:** "I rendered the diagrams before publishing so GitHub wouldn't show an error box, and I checked the arrows against the real routing code."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · README is cold-read by a fresh subagent and fixed from its feedback `[process]`
+- **Decision:** Start a subagent that reads only the first ~120 lines of `README.md`, as a stranger with 2 minutes. It answers what the project is, how it works, how well it works, what is weak, how to run it, and what confused it. Then apply the fixes.
+- **Why:** The author can't judge what a newcomer misses. Fixes applied: the results table says "checked by rules + an LLM judge", the run instructions name the exact env vars, and the limits mention that voice was tested only on WSL2.
+- **Alternatives:** none discussed.
+- **How:** An `Agent` call, then edits to `README.md` with asserted single-match replacements.
+- **How to explain it:** "I had a fresh reader skim the README with no other context, and I fixed what confused them."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Agent definitions get a privacy rule so the public repo stays a plain side project `[process]`
+- **Decision:** Add a privacy rule to the three agent definitions in `.claude/agents/`: the decision logger, the code documenter and the tutor. The rule says the repo is public and presented as a personal side project, and that personal or planning details must not appear in tracked files. Before this, Roman was asked what should be public, and the question covered personal planning notes that were still in the repo.
+- **Why:** Going public publishes every tracked file and all of history. The agents write many of those files automatically, so the rule has to be in their instructions. The scan counted many mentions across tracked files.
+- **Alternatives:** The question offered options, including trimming. Roman's answer is not visible in the excerpt.
+- **How:** `.claude/agents/decision-logger.md`, `.claude/agents/code-documenter.md`, `.claude/agents/tutor.md`.
+- **How to explain it:** "The helper agents write into a public repo, so their instructions say what must never be written there."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Roman flips the repo to public himself, and a tutor note explains how `[process]`
+- **Decision:** Claude does not change the repo's visibility. Roman will run `gh repo edit romaxod/georgian-voice-assistant --visibility public`. A new tutor note, "Making a repo public safely: secrets and privacy in git history", is requested and added to `learning/INDEX.md`. It also covers the `gh` flag difference: gh 2.45.0 has no `--accept-visibility-change-consequences`, and newer versions require it.
+- **Why:** Making a repo public is outward-facing and hard to undo, because history may be cached or indexed. The checks `gh --version` and `gh repo edit --help` showed which flags this machine's gh has. The index check showed the topics weren't covered yet.
+- **Alternatives:** Claude running the command was not discussed.
+- **How:** `learning/notes/2026-10-08-making-a-repo-public-safely.md`, `learning/INDEX.md`.
+- **How to explain it:** "Publishing is the one step I do myself, after the scans pass, so it's a deliberate act and not a side effect."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · README opens with a results table and a real traced conversation, and has a "what failed" section `[process]`
+- **Decision:** `README.md` is assembled from three parts: a head (results-at-a-glance table, a real conversation, architecture), the existing Evaluation sections, and a tail ("What failed along the way, and what I learned", Limits, a "Next, if this continued" list).
+- **Why:** The "what failed" section was written from the numbers in the earlier steps' results in `BUILD_PLAN.md`, so it quotes real figures. The example conversation is a real `python graph.py` run, with translations added. Why this order was chosen is not stated.
+- **Alternatives:** none discussed.
+- **How:** `README.md`, joined with `cat head.md eval_part.md tail.md`. Internal anchors and file links were checked with a small script (all resolved).
+- **How to explain it:** "The README leads with measured results and a real run, then says plainly what failed and what's missing, so every claim can be checked against the repo."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · README diagram edge says "wants a human / still unclear" after checking the routing in `graph.py` `[code]`
+- **Decision:** The `understand → handoff` edge in the README's graph diagram is labelled "wants a human / still unclear". The `clarify` row in the node table now says that if the next message is still unclear, `understand` hands off instead of asking again.
+- **Why:** The routing functions in `graph.py` showed that a second unclear message in a row is sent to `handoff` by `understand` itself, not by `clarify`. The first draft of the diagram and table did not say that.
+- **Alternatives:** none discussed.
+- **How:** `README.md` (Mermaid diagram and node table). Checked with `grep -n "def route_after\|return \"…\|handoff_reason" graph.py`. Related: `graph.py` → [docs](docs/code/graph.py.md).
+- **How to explain it:** "I checked each arrow in the README diagram against the routing code. That's how I found that the hand-off after a second unclear message comes from `understand`, not `clarify`."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · README is written in the first person, not as "Roman" `[code]`
+- **Decision:** The README's evaluation section now says "my recordings" instead of "Roman's recordings", and the whole README is written as "I".
+- **Why:** Not stated. The change was made as part of assembling the public README, which describes the project as the owner's own side project.
+- **Alternatives:** none discussed.
+- **How:** `README.md`, edited in the assembly step (`replace("takes Roman's recordings…", "takes my recordings…")`).
+- **How to explain it:** "It's my project and my README, so it's written in the first person."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Publish by rewriting history with `git filter-repo` into a new public repo, keeping the old repo private as an archive `[tooling]`
+- **Decision:** Roman chose option 1: rewrite every old commit with `git filter-repo`, keep the per-step commits, and publish the cleaned history as a new public `georgian-voice-assistant`. The current GitHub repo is renamed `georgian-voice-assistant-private` and stays private as the unedited archive.
+- **Why:** Old commits still contained earlier wording that no longer matches the cleaned files. A force-push to the same repo can leave old commits reachable by hash, so a new repo is safer. Keeping per-step commits preserves the build history.
+- **Alternatives:** Publishing a fresh repo with no history, and force-pushing the rewritten history to the same repo. The turn gives a reason only against the force-push (old commits stay reachable by hash). Why not a fresh single-commit repo is not stated.
+- **How:** `private/publish.sh` (modes `dry-run` and `publish`) clones into a temp folder and rewrites it. It runs `private/verify_history.py`, and in `publish` mode renames the repo, creates the new one, repoints `origin` to the public repo and `archive` to the private one, and runs `git reset --keep` to the rewritten `main`. `git-filter-repo` is installed in `private/tools`, so `.venv` and `requirements.txt` don't change. All scripts are in the gitignored `private/`. BUILD_PLAN 3.5 was updated.
+- **How to explain it:** I rewrote the history into a new public repo and kept the original private, so old commits can't be reached by hash on the public one.
+- **Decided by:** Roman
+
+### 2026-10-08 · Scrub history with exact sentence replacements, whole-file replacement of `PROJECT_CONTEXT.md`, and a forbidden-term check `[code]`
+- **Decision:** `private/history_rules.py` holds `RULES`, a list of exact substring replacements applied to every historic text file version. It also holds `WHOLE_FILES = {"PROJECT_CONTEXT.md"}`, so every old version of that file is replaced by the current cleaned one. A `FORBIDDEN` list is used by the verifier.
+- **Why:** The replacements are the same sentence edits already applied to today's files, so old versions come out matching today's. `PROJECT_CONTEXT.md` held long source text that a word list can't catch, so it is replaced whole.
+- **Alternatives:** Word-list-only scrubbing is implied to be insufficient for that file. Others: none discussed.
+- **How:** `private/history_rules.py`, used by `private/file_info_callback.py` (`git filter-repo --file-info-callback`) and by `private/publish.sh`.
+- **How to explain it:** I reused the exact edits I made to the current files on the old versions, and swapped one whole file, because pattern matching can't find everything.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · A verifier blocks publishing unless the rewritten clone passes five checks `[process]`
+- **Decision:** `private/verify_history.py <clean-clone> <working-repo>` exits 1 if any check fails. The checks are: no `FORBIDDEN` term in any reachable file version or commit message; no `.env` value anywhere; same commit count and authors as the original; and the newest commit's tree identical to the working repo's.
+- **Why:** The tree-identity check ensures the rewrite changed only the past. The `.env` value check catches real secrets, not just key names. Other reasons are not stated.
+- **Alternatives:** none discussed.
+- **How:** `private/verify_history.py` runs inside `private/publish.sh`. It reads the history of every reachable blob with `git rev-list --all --objects` and `cat-file --batch-check`.
+- **How to explain it:** Publishing is gated by an automatic check that the old history is clean and the current code is untouched.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Roman runs the dry run and the publish himself after the auto-mode classifier blocked the dry run `[process]`
+- **Decision:** Roman runs `bash private/publish.sh dry-run` and then `publish` himself, with `!` so the output is visible in the session. Claude only wrote the scripts. Roman commits and pushes today's work first.
+- **Why:** The permission classifier denied the dry run as "Git Destructive", even though it only touches a temporary clone. Publishing also changes GitHub, which is outward-facing.
+- **Alternatives:** Claude trying other tools to do the dry run. Not pursued, and the reason is not stated beyond the block.
+- **How:** Ordered steps given to Roman: commit and push, `! bash private/publish.sh dry-run`, then `! bash private/publish.sh publish` only if the dry run ends with `Dry run OK`.
+- **How to explain it:** The history rewrite and the GitHub swap are run by me, not an agent, because they are hard to undo.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · The history verifier prints the matched text with context, not the start of the line `[tooling]`
+- **Decision:** The local verifier now reports each leftover as the matched words plus about 90 characters before and 60 after. It used to print the first 160 characters of the line.
+- **Why:** The first dry run failed with 9 problems, but the report showed only the start of long lines. The match itself wasn't visible, so Roman couldn't tell which phrase was left.
+- **Alternatives:** none discussed. A `grep` with context was tried first and failed because the shell's `grep` is ugrep, which rejected the pattern as too complex. Python was used instead.
+- **How:** The verifier script is local-only and untracked, so no docs link applies. The `problems.append(...)` line was changed to slice around `m.start()` and `m.end()`.
+- **How to explain it:** A check that refuses to publish should show exactly what it matched, so a failure can be fixed straight away.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Add exact-phrase scrub rules for the older versions of two files after listing every leftover `[code]`
+- **Decision:** Three more exact-text replacement rules were added to the local history-scrub rules. They cover older wordings in `learning/INDEX.md` and `SETUP.md`, which now read as generic text ("effect on the demo", "a work one", and one sentence with a clause dropped). Each rule was tested on a sample line and came out clean.
+- **Why:** The dry run found 9 leftovers, all in old versions of those two files. Earlier rules only matched the newer wordings, such as a trailing semicolon. Before writing the rules, Claude listed every match across all versions of both files, so these three were the only gaps. No other file failed.
+- **Alternatives:** none discussed. The existing approach of exact sentence replacements was kept (see the earlier scrub entry).
+- **How:** The rules live in the local-only scrub rules file, which is untracked. Roman reruns `bash private/publish.sh dry-run`, then `publish`, himself.
+- **How to explain it:** The scrub is a list of exact replacements, so each older wording of a sentence needs its own rule. The verifier shows which ones are missing.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Fix the commit-message typo by amending the last commit and folding in the log entries `[process]`
+- **Decision:** Suggest folding the uncommitted `DECISIONS.md` entries into the last commit with `git commit --amend`. The new message is "3.5 README for a 2-minute read, .env.example, personal notes moved out of the repo", pushed with `git push --force-with-lease`. After that, a second dry run and then the publish.
+- **Why:** The old message had a typo ("remvoed") and would be public. The publish preflight also stops on uncommitted changes. The force push only replaces one commit, in the repo that becomes the private archive.
+- **Alternatives:** A separate commit, "Decision log: history publish checks", and a plain `git push`. This leaves the typo in the public history.
+- **How:** `git add -A`, then `git commit --amend -m ...`, then `git push --force-with-lease`. Then `bash private/publish.sh dry-run` and `bash private/publish.sh publish`.
+- **How to explain it:** I amended the last commit before publishing so the public history has a correct message, and the push only affected the repo that becomes the archive.
+- **Decided by:** Claude (unconfirmed)
