@@ -148,8 +148,28 @@ Checked 2026-10-08 against the Claude Code memory docs (<https://code.claude.com
 - Lesson: an agent with no tools only knows what the prompt contains. If a rule must bind it, put the rule in the prompt.
 
 **3. Current files are not enough: history still has the old wording.**
-- Every old commit keeps the earlier text, and `git log -p` shows it, so history must be rewritten before the repo goes public. This was NOT done this session: rewriting history needs Roman's explicit go-ahead, and he runs every git command himself.
+- Every old commit keeps the earlier text, and `git log -p` shows it, so history had to be rewritten before the repo went public. *Done 2026-10-08, by Roman:* he chose (a), published as a new public repo, with the old repo renamed and kept private as the unedited archive. Claude's permission classifier blocks Claude from running filter-repo, so he ran the script himself (`bash private/publish.sh dry-run`, then `publish`).
 - **(a) `git filter-repo` in a fresh clone,** keeping the per-step commits. `--replace-text` rewrites literal phrases in every file version; `--file-info-callback` lets a Python snippet rewrite or swap whole file versions per path. Afterwards verify with `git log --all -p | grep -i <phrase>` and `git log --all --format=%B | grep -i <phrase>` (commit messages need checking too; `--replace-message` covers them). Prove the check can find something first (planted-phrase break test, as in section 2).
 - **(b) Fresh history:** one orphan commit (`git checkout --orphan clean`, commit today's tree). Simplest and certain, but loses the step-by-step history.
 - **Where to push.** GitHub's page says that after a force-push the data can remain in cached views and pull request references, that commits in forks stay accessible, and that you must contact GitHub Support to remove cached views. Force-pushing to the existing repo therefore may leave old commits reachable by SHA. Safer: create a new repo with the cleaned history and keep the old one private (or delete it).
 - Cheapest of all: never publish what you'd have to scrub. Do the scan and the rewrite while the repo is still private.
+
+
+**What the rewrite looked like (generic):**
+- **Install outside the venv:** `python3 -m pip install --target private/tools git-filter-repo` (2.47.0), so `requirements.txt` doesn't change.
+- **Fresh clone:** `git clone --no-local --single-branch --branch main` into a `mktemp` folder. filter-repo wants a fresh clone and removes `origin` ("NOTICE: Removing 'origin' remote") so you can't push back by accident.
+- **Rewrite:** `git_filter_repo.py --force --file-info-callback <file>`. The file holds a Python body that receives `(filename, mode, blob_id, value)`, reads contents with `value.get_contents_by_identifier(blob_id)`, writes new ones with `value.insert_file_with_contents(bytes)`, and returns the tuple. One file had every historic version swapped for today's; the others got exact sentence replacements. 30 commits took 0.3 s.
+- **Verifier (the script refuses to publish if any check fails):**
+  - No forbidden pattern in any reachable blob (`git rev-list --all --objects` piped to `git cat-file --batch-check`) or commit message.
+  - No `.env` value anywhere.
+  - Same commit count and authors.
+  - The newest commit's tree hash equals the original's (`git rev-parse main^{tree}`). Git trees are content-addressed, so this proves only the past changed.
+- **The first dry run failed with 9 leftovers:** older wordings of two files that the exact rules didn't match (for example a line without the semicolon the rule expected). Three rules were added and the second run passed. The verifier first printed the start of long lines instead of the match; showing the match with context fixed that.
+- **Lessons:** exact replacements need a rule per historic wording; a verifier that refuses to publish is what finds them; a check must be able to fail.
+
+**Publishing and switching the local clone:**
+- `gh repo rename georgian-voice-assistant-private --repo romaxod/georgian-voice-assistant --yes` (the old URL redirects until a new repo takes the name), then `gh repo create romaxod/georgian-voice-assistant --public --description ...`, then push the clean clone's `main`.
+- Locally: `git remote rename origin archive`, `git remote set-url archive <private url>`, `git remote add origin <public url>`, `git fetch`, `git reset --keep origin/main`, `git branch --set-upstream-to=origin/main main`.
+- `reset --keep` moves `main` to the rewritten commits but refuses if it would overwrite local changes, unlike `--hard`. Untracked and ignored files are untouched (and the files were identical anyway).
+- Checked afterwards: public repo PUBLIC, archive PRIVATE, 30 commits, 106 files, 0 forbidden matches, no `private/` or `.env`, status `## main...origin/main`.
+- **From now on every push is public.** The guards are the privacy-ruled agents plus a scan before pushing.

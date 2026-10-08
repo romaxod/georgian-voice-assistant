@@ -1458,3 +1458,19 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `git add -A`, then `git commit --amend -m ...`, then `git push --force-with-lease`. Then `bash private/publish.sh dry-run` and `bash private/publish.sh publish`.
 - **How to explain it:** I amended the last commit before publishing so the public history has a correct message, and the push only affected the repo that becomes the archive.
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · After publishing, check the public `main` from the outside `[process]`
+- **Decision:** Right after the push, check the published result directly instead of trusting the publish script's own "OK". The check covered both repos' visibility, the local remotes, and a scan of `origin/main` for forbidden terms, `.env` and personal-notes folders.
+- **Why:** The pre-publish verifier ran on a temp clone, not on what GitHub now holds. Not stated beyond that.
+- **Alternatives:** none discussed.
+- **How:** One-off `gh repo view` and `gh api .../readme` calls, `git remote -v`, and a short Python check over `git log origin/main -p` and `git ls-tree`. Result: public repo PUBLIC, archive PRIVATE, 30 commits, 0 forbidden hits, no private folder or `.env` published, README present. The result is recorded in the `BUILD_PLAN.md` 3.5 entry.
+- **How to explain it:** "The verifier checked a local clone, so I also checked what is actually on GitHub: visibility, files, and history."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Scan every pending change for forbidden terms before suggesting a push `[process]`
+- **Decision:** Now that `origin` is public, every push is public. Before suggesting a commit or push, Claude scans the pending diff with the local forbidden-term check. The three files changed in this turn (`BUILD_PLAN.md`, the tutor note, `learning/INDEX.md`) scanned clean.
+- **Why:** The history is now public, so a leaked term in a new commit would be visible. Rewriting history again would mean another new repo.
+- **Alternatives:** none discussed. The privacy rule in the agent definitions is the other guard, and this scan is added on top of it.
+- **How:** A local Python check runs the term pattern over `git diff` before each suggested push. The habit is also recorded in Claude's own memory notes, which are outside the repo.
+- **How to explain it:** "The repo is public now, so every new commit gets a term scan before it is pushed. The agents' privacy rules are a second guard."
+- **Decided by:** Claude (unconfirmed)
