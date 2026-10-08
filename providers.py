@@ -31,16 +31,20 @@ ELEVENLABS_VOICES = tuple(elevenlabs_api.VOICE_SETTINGS)  # "ready" (premade, Br
 
 PROVIDERS = ("azure", "elevenlabs")
 FAQ_JSON = Path(__file__).parent / "data" / "faq.json"
-# Words a caller of a mobile operator says that a general model may not expect. Kept to the domain on
-# purpose: "API" and "key" (in Roman's recordings c1/c2) are NOT here, because keyterms copied from the
-# test recordings would make Scribe look better on them than it would be on new questions.
-DOMAIN_TERMS = ["ჯიხვი", "როუმინგი", "აპლიკაცია", "ტარიფი", "iPhone", "Android", "SMS", "WiFi", "email"]
+# Words a hiker says that a general model may not expect: the service's name and the places in the
+# FAQ, which STT easily turns into ordinary words. Kept to the domain on purpose: the English words in
+# the code-switched test cases (camping, GPS, trail, ...) are NOT here, because keyterms copied from the
+# test set would make Scribe look better on it than it would be on new questions.
+DOMAIN_TERMS = ["ჯიხვი", "სტეფანწმინდა", "ყაზბეგი", "გერგეტი", "ჯუთა", "ჭაუხი", "როშკა", "თრუსო",
+                "აბუდელაური", "მესტია", "უშგული", "ქორულდი", "ჭალაადი", "შდუგრა", "ომალო", "შატილი",
+                "აწუნთა", "უძირო", "ლაგოდეხი", "ნინოსხევი", "ბორჯომი", "მტირალა", "ტობავარჩხილი", "კოჯორი",
+                "მარშრუტკა", "ნაგაზი"]
 
 
 def faq_terms() -> list[str]:
-    """The Latin-letter terms in the FAQ (SIM, eSIM, GB, QR, 5G, ...): the vocabulary answers are built from."""
+    """The Latin-letter terms in the FAQ (SOS, ...): the vocabulary answers are built from."""
     entries = json.loads(FAQ_JSON.read_text(encoding="utf-8"))
-    # Not the "id" field: ids are English slugs ("esim-activation"), not words a caller says
+    # Not the "id" field: ids are English slugs ("gergeti-trinity"), not words a hiker says
     text = json.dumps([[e["topic"], e["question"], e["answer"], e["keywords"]] for e in entries], ensure_ascii=False)
     return sorted(set(re.findall(r"\b(?:[A-Za-z]{2,}|\dG)\b", text)))
 

@@ -49,10 +49,10 @@ RECORDINGS = {
                 "email": ["email", "e-mail", "იმეილ", "მეილ"]}),
 }
 
-# FAQ answers that cover what the voice must say: prices (₾, tetri), plan names with a Latin letter,
-# times, 24/7, SIM/eSIM/QR, GB, 4G/5G, a menu path, and plain Georgian.
-TTS_SENTENCES = ["plans-overview", "plan-m", "plan-change", "roaming-europe", "international-calls",
-                 "esim-activation", "sim-lost", "branch-hours", "app-chat", "coverage-5g"]
+# FAQ answers that cover what the voice must say: prices (₾), km with decimals, metres, times, ranges,
+# 112 and SOS, place names, and plain Georgian. (Until 3.6 these were the mobile-operator answers.)
+TTS_SENTENCES = ["gergeti-trinity", "gergeti-glacier", "juta-access", "mestia-ushguli", "omalo-shatili",
+                 "emergency-112", "transport-kazbegi", "kojori-turtle-lake", "sheepdogs", "guides-chat"]
 
 
 def words(text: str) -> list[str]:

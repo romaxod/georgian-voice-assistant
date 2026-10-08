@@ -18,7 +18,7 @@ runs each node in its own task, so the lookup node can't restart the server itse
 connection broken, and the chat loop (the task that owns the connection) restarts it before the next
 turn with ensure_connected().
 
-Run:  python faq_client.py ბარათი      start the server, call lookup_faq once, print the entries
+Run:  python faq_client.py მყინვარი    start the server, call lookup_faq once, print the entries
 """
 import asyncio
 import sys

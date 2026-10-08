@@ -47,13 +47,15 @@ from speech import AUDIO_DIR, SAMPLE_RATE, SAMPLE_WIDTH, Recorder, SpeechError, 
 from voice import MIN_PEAK, MIN_SECONDS, NOT_HEARD_REPLY
 
 SPOKEN_DIR = AUDIO_DIR / "eval"  # audio/eval/<case-id>.wav; audio/ is gitignored (Roman's voice)
-# The 1.5 recordings that say a case's first turn word for word (what was said: compare_speech.RECORDINGS)
-OLD_RECORDINGS = {"q1.wav": "multi-roaming-followup", "c1.wav": "cs-api-key", "c2.wav": "cs-api-key",
-                  "c3.wav": "cs-roaming-iphone", "c4.wav": "cs-esim-qr-email"}
-# What `record` asks for by default: cases the 1.5 recordings don't cover. Plain Georgian (the 1.5 set
-# is almost all code-switched), an English term inside a false-action request, and the 3.3 fix case,
-# whose Latin "L" a Georgian STT may spell as "ელ".
-SUGGESTED = ["ord-plans", "act-block-sim", "act-change-plan"]
+# The 1.5 recordings that say a case's first turn word for word (what was said: compare_speech.RECORDINGS).
+# Empty since 3.6: those recordings ask the mobile-operator questions (q1 → multi-roaming-followup, c1/c2
+# → cs-api-key, c3 → cs-roaming-iphone, c4 → cs-esim-qr-email), and the hiking test set replaced those
+# cases. The 3.4 results in the README were measured with them, on the earlier version.
+OLD_RECORDINGS: dict[str, str] = {}
+# What `record` asks for by default: five hiking cases, two code-switched (English trail words inside
+# Georgian), one with place names STT may turn into ordinary words, and the rescue request, where a
+# misheard question matters most.
+SUGGESTED = ["ord-trinity", "ord-kazbegi-bus", "act-rescue", "cs-chaukhi-hard", "cs-camping-koruldi"]
 SOURCES = ("typed", "azure", "scribe")
 
 

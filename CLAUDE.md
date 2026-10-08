@@ -50,6 +50,6 @@ If you are the tutor, ignore this section.
 
 - Never ask for or accept API keys in chat. They go only in `.env` (gitignored).
 - `gh` on this machine has more than one account; `private/CONTEXT.md` says which one this repo uses. Confirm it's active (`gh auth status`) before any push. This repo's git identity is set locally, never globally.
-- No real company's code, data, prompts or branding; the service and its data are fictional. Personal details stay in `private/`.
+- No real company's code, data, prompts or branding; the service is fictional. Public facts (like trail data) are fine, paraphrased, with a source per FAQ entry. Personal details stay in `private/`.
 - Decisions are logged automatically to `DECISIONS.md` by the Stop hook (`decision-logger` agent). State the reason for a choice explicitly in your reply, so the logger can capture it. If you see a wrong entry, fix it. If you are the headless decision logger or code documenter, ignore this file.
 - Code docs in `docs/code/` are regenerated automatically by a second Stop hook (`.claude/hooks/document-code.sh`) whenever a code file's content changes. Don't edit them by hand; fix the code or `.claude/agents/code-documenter.md` instead. To refresh them right away (e.g. before telling Roman to read one): `python3 .claude/hooks/code_docs.py`.

@@ -3,7 +3,7 @@
 data/faq.json is the source of truth (easy to read and diff); data/faq.db is built from it
 automatically and isn't committed. Step 1.4 gives lookup_faq to the model as a tool.
 
-Run:  python faq.py ბარათი          search and print the matching entries as JSON
+Run:  python faq.py მყინვარი        search and print the matching entries as JSON
       python faq.py --build         rebuild data/faq.db from data/faq.json
 """
 import argparse
@@ -15,7 +15,7 @@ DATA_DIR = Path(__file__).parent / "data"
 JSON_PATH = DATA_DIR / "faq.json"
 DB_PATH = DATA_DIR / "faq.db"
 
-# Common Georgian case/plural endings. Cutting one off lets "ბარათი" also match "ბარათის", "ბარათით".
+# Common Georgian case/plural endings. Cutting one off lets "მყინვარი" also match "მყინვარის", "მყინვარით".
 SUFFIXES = ("ების", "ებს", "ები", "ის", "ით", "ში", "ზე", "ად", "ს", "ი")
 # Question words that appear in almost every entry, so they'd match everything.
 STOPWORDS = {"რა", "და", "როგორ", "რომ", "თუ", "ან", "მე", "ჩემი", "არის", "როდის", "შემიძლია"}
@@ -74,7 +74,7 @@ def lookup_faq(topic: str, limit: int = 3) -> list[dict]:
     # Each word adds points to an entry; the entry's score is the sum. Per word:
     #   +2 the exact word is in topic or keywords (spaces around both sides = whole-word match)
     #   +2 its stem is in the topic (the entry's headline), +1 its stem is anywhere in the entry
-    # Stems shorter than 3 letters skip the substring checks: "m" would match every "SIM" and "MB".
+    # Stems shorter than 3 letters skip the substring checks: "კმ" would match every distance.
     # Only "?" placeholders go into the SQL text. The user's words travel separately in `params`.
     tags = "(' ' || topic || ' ' || keywords || ' ')"
     everything = "(topic || ' ' || question || ' ' || answer || ' ' || keywords)"
@@ -103,7 +103,7 @@ def lookup_faq(topic: str, limit: int = 3) -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search the ჯიხვი FAQ.")
-    parser.add_argument("topic", nargs="*", help="words to search for, e.g. ბარათი")
+    parser.add_argument("topic", nargs="*", help="words to search for, e.g. მყინვარი")
     parser.add_argument("--build", action="store_true", help="rebuild data/faq.db from data/faq.json")
     args = parser.parse_args()
 

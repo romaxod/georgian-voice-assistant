@@ -13,6 +13,10 @@ and 2.5 (TTS → STT round trips and Roman listening):
 After the rewrite, prices, times and plan names come back word for word, and QR is said at all
 ("ქი ვარ" instead of nothing). eSIM comes back as "ის იმის", so only listening can tell if it sounds
 right: a round trip tests TTS and STT together.
+Step 3.6 (hiking guide) added, by the same pattern but not yet round-trip measured:
+    "6 კმ-ია"     an abbreviation, read letter by letter                → 6 კილომეტრია
+    "20.4"        a decimal point                                       → 20 მთელი 4
+    "SOS"         would be spelled with English letter names            → სოს
 
 How: a few regex rules for numbers and symbols, then every Latin-letter word is looked up in TERMS
 (how a Georgian speaker says it), and short all-caps words not in TERMS are spelled with English
@@ -37,6 +41,7 @@ TERMS = {
     "GB": "გიგაბაიტ|ი", "MB": "მეგაბაიტ|ი", "SIM": "სიმ", "eSIM": "ისიმ", "PIN": "პინ", "PUK": "პუკ",
     "SMS": "ესემეს|ი", "LTE": "ელტეე", "WiFi": "ვაიფაი", "iPhone": "აიფონ|ი", "Android": "ანდროიდ|ი",
     "email": "იმეილ|ი", "online": "ონლაინ", "OK": "ოქეი", "key": "ქი", "app": "აპ|ი", "Jikhvi": "ჯიხვი",
+    "SOS": "სოს", "GPS": "ჯიპიეს", "camping": "კემპინგ|ი", "trail": "ტრეილ|ი",
 }
 # English letter names in Georgian letters, for acronyms that aren't in TERMS (QR → ქიუარ).
 LETTERS = dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -54,6 +59,8 @@ CLOCK = re.compile(r"\b(\d{1,2}):(\d{2})\b" + GEORGIAN_SUFFIX)
 ALWAYS = re.compile(r"\b24/7\b")
 RANGE = re.compile(r"\b(\d+)-(\d+)\b")
 PERCENT = re.compile(r"(\d)\s?%")
+KM = re.compile(r"(\d)\s?კმ" + GEORGIAN_SUFFIX + r"(?![ა-ჰ])")   # "6 კმ-ია" → "6 კილომეტრია"
+DECIMAL = re.compile(r"\b(\d+)\.(\d+)\b")                       # "20.4" → "20 მთელი 4" (after prices)
 NETWORK = re.compile(r"\b(\d)G\b" + GEORGIAN_SUFFIX)          # 4G, 5G
 DIGIT_LATIN = re.compile(r"(\d)([A-Za-z])")                     # "1GB" → "1 GB"
 LATIN_WORD = re.compile(r"(?<![A-Za-z])(Wi-Fi|[A-Za-z]+)" + GEORGIAN_SUFFIX)
@@ -108,6 +115,8 @@ def speakable(text: str) -> str:
     text = ALWAYS.sub("24 საათი, კვირაში 7 დღე", text)
     text = RANGE.sub(r"\1-დან \2-მდე", text)
     text = PERCENT.sub(r"\1 პროცენტი", text)
+    text = KM.sub(lambda m: f"{m.group(1)} {with_suffix('კილომეტრ|ი', m.group(2))}", text)
+    text = DECIMAL.sub(r"\1 მთელი \2", text)
     text = NETWORK.sub(lambda m: f"{m.group(1)} {with_suffix('ჯი', m.group(2))}", text)
     text = DIGIT_LATIN.sub(r"\1 \2", text)
     text = LATIN_WORD.sub(say_latin, text)

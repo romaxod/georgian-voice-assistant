@@ -1474,3 +1474,107 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** A local Python check runs the term pattern over `git diff` before each suggested push. The habit is also recorded in Claude's own memory notes, which are outside the repo.
 - **How to explain it:** "The repo is public now, so every new commit gets a term scan before it is pushed. The agents' privacy rules are a second guard."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · A private variant was built outside the repo; the public assistant is unchanged `[scope]`
+- **Decision:** A private variant was built outside the repo. It is gitignored, and no tracked file changed. The public assistant keeps its current persona.
+- **Why:** The README's evaluation numbers were measured on the public persona, so changing it would break the link between the results and the code.
+- **Alternatives:** Replacing the public persona was not pursued, because of the eval numbers above.
+- **How:** Nothing tracked changed, so there are no files or docs to link. `git status` was clean after the turn.
+- **How to explain it:** "The public repo stays as measured, and anything personal is kept out of it."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Turn the public assistant from a mobile operator into a Georgian hiking guide `[scope]`
+- **Decision:** The public assistant stops being a fictional mobile operator. It becomes ჯიხვი (Jikhvi), a fictional Georgian hiking guide that recommends local hikes and answers practical how-to questions.
+- **Why:** Roman wanted something fun and closer to a hobby of theirs instead of the operator theme. The earlier "public assistant unchanged" entry was true only until this turn.
+- **Alternatives:** An `AskUserQuestion` offered options for how far to go, and Roman picked "Fun domain now, rename in history". The other options are cut off in the excerpt.
+- **How:** Planned, not yet applied. `data/faq.json` gets about 21 hike and safety entries. The prompts change in `graph.py`, `chat.py`, `mcp_server.py` and `run_evals.py`. `speech_text.py` learns km, m and hours. `providers.py` gets place-name keyterms for STT. `data/eval_cases.yaml` is rewritten.
+- **How to explain it:** I switched the demo from a telecom customer-service bot to a hiking guide because it's more fun, and the pipeline (graph, MCP, evals, voice) doesn't depend on the domain.
+- **Decided by:** Roman (theme, via the question); Claude (the planned change list, unconfirmed)
+
+### 2026-10-08 · Rename the old service name in the whole public history, not only in the current files `[architecture]`
+- **Decision:** Every occurrence of the service's old name is rewritten to ჯიხვი across all 31 commits of the public repo, so the history never shows the old name. A later commit then switches the domain to hiking.
+- **Why:** Roman asked for the old name to be gone "all throughout repo commit history". A count showed about 180 occurrences in tracked files and history, in code, docs, data and `DECISIONS.md`.
+- **Alternatives:** Renaming only the current files would leave the old name visible in history. That wasn't chosen. The turn also discussed a history that reads as a pivot (operator → hiking guide).
+- **How:** The same scrub-and-republish tooling used for the earlier publish, with new rename rules. The rules cover the Georgian case forms the new name needs (ჯიხვი, ჯიხვის, ჯიხვს, ჯიხვმა) and the Latin spelling Jikhvi, and the verifier refuses to publish if the old name appears in any file version. The rewritten commits are verified before any push.
+- **How to explain it:** The history was rewritten with a rename rule, so the public repo reads as if the project always used the new name.
+- **Decided by:** together (Roman asked for it, Claude planned it)
+
+### 2026-10-08 · Use one new name for both the history rename and the hiking guide `[naming]`
+- **Decision:** A single new name, ჯიხვი (Jikhvi, the Caucasian tur), replaces the old name in the history and is also the hiking guide's name.
+- **Why:** It is simpler than two names and makes the history read as one pivot (operator → hiking guide). A mountain goat suits a hiking guide. "Biliki" (trail) was rejected because a real Georgian hiking app used it, and "Gzamkvlevi" (guide) because a Georgian travel site uses it; searches found no tour or app brand called ჯიხვი/Jikhvi.
+- **Alternatives:** Two separate names, one for the old history and one for the guide. Not chosen because it's more work.
+- **How:** Regex rules in the history rewrite, applied to the current files too, plus the new prompts and FAQ.
+- **How to explain it:** There is one product name, and history was renamed to match it.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Rewrite the existing public repo with a verified force-push instead of creating a new one `[tooling]`
+- **Decision:** Add a `rewrite` mode to the publish script. It runs the same rewrite and verification as `publish`, then force-pushes over the existing public `origin/main` using `--force-with-lease` pinned to the current remote commit. After that it resets local `main` onto the rewritten history.
+- **Why:** The public repo already exists, so a new-repo publish no longer fits. The lease means the push fails if the remote moved.
+- **Alternatives:** Creating another new public repo, as in the first publish. Not stated why not.
+- **How:** The edit to the publish script was **denied by the auto-mode classifier** and was not applied. It still needs to be redone or run by Roman.
+- **How to explain it:** To change old commits on a repo that is already public, I force-push with a lease after the rewritten clone passes the checks.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Research real hiking sources with a web-only subagent that must cite URLs and paraphrase `[process]`
+- **Decision:** A subagent researches 8–15 hiking websites and 15–18 hikes across regions (Kazbegi, Svaneti, Tusheti, Khevsureti, Racha, Adjara, Borjomi, Kakheti, near Tbilisi). It gets web access only and must not touch repo files.
+- **Why:** The evals check exact numbers (km, hours, elevation, prices). So the subagent may report only numbers it actually saw on a page, with that page's URL.
+- **Alternatives:** Writing the facts from the model's memory. Not chosen, since the evals need accurate numbers.
+- **How:** The FAQ is written in Georgian by us, paraphrasing rather than copying text, with a source URL kept per entry in `data/faq.json`.
+- **How to explain it:** The trail facts come from cited pages and are paraphrased, because the evals check exact numbers.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Keep the old 3.3/3.4 results in the README, labelled as measured on the mobile-operator version `[process]`
+- **Decision:** The existing eval and voice-check results stay in the README but are labelled as measured on the earlier mobile-operator version. The new hiking evals are re-run for new numbers. The new `data/eval_cases.yaml` keeps the same 8 categories.
+- **Why:** The old numbers are real, but they came from a different assistant. Keeping the 8 categories makes the two versions comparable.
+- **Alternatives:** Deleting the old results. Not chosen. The excerpt doesn't say why.
+- **How:** Planned. The README gets labels, and `run_evals.py` and `voice_evals.py` are re-run after the switch. The false-action guard changes from "I blocked your SIM" to "I booked your guesthouse / registered you".
+- **How to explain it:** I kept the old results but marked which assistant they came from. Then I re-measured on the hiking version.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · A private variant was built outside the repo `[scope]`
+- **Decision:** A private variant was built outside the repo. Nothing about it is tracked here.
+- **Why:** It is personal, and this repo is public.
+- **Alternatives:** none discussed
+- **How:** Kept out of this repo by `.gitignore`.
+- **How to explain it:** "Anything personal lives outside the public project."
+- **Decided by:** Roman
+
+### 2026-10-08 · Name the hiking guide ჯიხვი (Jikhvi) after a brand check `[naming]`
+- **Decision:** The fictional hiking guide, and the replacement name in the history rename, is ჯიხვი (Jikhvi, the Caucasian tur).
+- **Why:** The research subagent warned against "Biliki" (ბილიკი) because it was a real hiking app brand. Gzamkvlevi was ruled out because gzamkvlevi.com is a real travel site using the same name. Jikhvi was then web-searched in English and Georgian for existing tours, companies or apps. The outcome of those searches is not shown in the excerpt.
+- **Alternatives:** Biliki (real brand), მთის ბილიკი (close to Biliki), გზამკვლევი / Gzamkvlevi (used by a site, and an ordinary word that is risky as a brand).
+- **How:** `private/history_rules.py` rename rules (outside the tracked repo) and the renamed tracked files. Case forms ჯიხვი, ჯიხვის, ჯიხვს, ჯიხვმა and the Latin `Jikhvi` / `jikhvi`.
+- **How to explain it:** "I picked a name that no existing hiking brand uses, and the Caucasian tur is a mountain animal, so it fits a hiking guide."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Apply the history-rename rules to the current files too `[code]`
+- **Decision:** The same scrub rules used for the history rewrite were run over every tracked file, so 43 files were renamed in the working tree. A check afterwards showed no old-name matches left in tracked files.
+- **Why:** The newest commit should already match what the history rewrite will produce.
+- **Alternatives:** none discussed
+- **How:** A one-off Python script that imports `history_rules.scrub` and rewrites each file from `git ls-files`, skipping the whole-file replacements. Followed by `git grep` for the old name.
+- **How to explain it:** "One set of rename rules is used for both the history and the current files, so they can't disagree."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Hiking FAQ with a `source` URL per entry, one cited source per number `[code]`
+- **Decision:** `data/faq.json` is replaced by 34 hiking and practical-safety entries (recommendations, Kazbegi, Svaneti and other regions, transport, 112, sheepdogs, permits). Each entry has a new `source` field with the page its numbers came from. Where sources disagree, the answer uses the cited one.
+- **Why:** The evals check exact numbers (km, hours, elevation). The research found sources that disagree on many of them, for example Mestia–Ushguli at 56.9 vs 50 km and Gergeti glacier at 20.4 vs 26 km. Each number therefore needs one traceable source. The answers are paraphrased, not copied.
+- **Alternatives:** none discussed
+- **How:** `data/faq.json` → [docs](docs/code/data/faq.json.md), generated by a scratch script, then `python faq.py --build` rebuilds `data/faq.db`. Sample searches (თრუსო, ნაგაზი, მაშველები, დამწყები ლაშქრობა) returned the expected entry ids.
+- **How to explain it:** "Every number in the guide points to the page it came from, because the sources disagree and the evals check exact values."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · The false-action guard now catches hiking claims, and is tested on six phrases `[code]`
+- **Decision:** `FALSE_ACTION_CLAIM` in `graph.py` changes from SIM and tariff verbs ("I blocked your SIM") to booking and calling verbs ("I booked your guesthouse", "I called the rescue"). The negation rule stays: "ვერ"/"არ" just before the verb lets the draft through.
+- **Why:** The assistant still can't do any real-world action, so a draft claiming one is still false. The old verb list no longer matched the new domain. In the test, claims (დაგიჯავშნე, გამოვიძახე, გამოგიძახებთ) were caught. Negations (ვერ დაგიჯავშნით) and instructions (დარეკეთ 112-ზე, გამოიძახეთ მაშველები) passed.
+- **Alternatives:** none discussed
+- **How:** `graph.py` → [docs](docs/code/graph.py.md), checked by calling `graph.false_action_claim` on six sample phrases.
+- **How to explain it:** "The assistant can't book or call anyone, so a regex catches drafts that say it did, and I checked it on claims, negations and instructions."
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-08 · Say "user" instead of "customer" in the graph prompts `[code]`
+- **Decision:** In `graph.py`, every "customer" and "customer's" became "user" and "user's" (0 "customer" left).
+- **Why:** Not stated. It follows from the assistant no longer being a service for paying customers.
+- **Alternatives:** none discussed
+- **How:** `sed` over `graph.py` → [docs](docs/code/graph.py.md).
+- **How to explain it:** "A hiking guide has users, not customers, so the prompts say so."
+- **Decided by:** Claude (unconfirmed)

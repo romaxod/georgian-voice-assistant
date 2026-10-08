@@ -33,7 +33,7 @@ log = logging.getLogger("faq-server")
 mcp = MCPServer(
     "jikhvi-faq",
     version="0.1.0",
-    instructions="Read-only search over the FAQ of ჯიხვი, a fictional Georgian mobile operator.",
+    instructions="Read-only search over the FAQ of ჯიხვი, a fictional Georgian hiking-guide service.",
 )
 
 
@@ -58,13 +58,14 @@ class LookupResult(BaseModel):
 def lookup_faq(
     topic: Annotated[str, Field(
         min_length=1, max_length=MAX_TOPIC_CHARS,
-        description="2-4 Georgian keywords for what the customer asks about, e.g. "
-                    "\"როუმინგი ევროპა\" or \"eSIM აქტივაცია\". Keywords, not the whole question.",
+        description="2-4 Georgian keywords for what the user asks about, e.g. "
+                    "\"თრუსოს ხეობა\" or \"ნაგაზი ძაღლი\". Keywords, not the whole question.",
     )],
 ) -> LookupResult:
-    """Search the ჯიხვი FAQ: plans and prices, extra internet, roaming, international calls, SIM and
-    eSIM, PIN/PUK, balance, number porting, contract, branches and hours, contacting an operator,
-    5G coverage. Returns up to 3 entries, best match first; an empty list means nothing matched."""
+    """Search the ჯიხვი FAQ about hiking in Georgia: trail recommendations, distance, time, difficulty,
+    season, transport to the trailhead, guesthouses and camping, permits and registration, safety (112,
+    shepherd dogs, water), contacting a guide. Returns up to 3 entries, best match first; an empty list
+    means nothing matched."""
     if not topic.strip():  # min_length=1 still lets "   " through
         raise ToolError("topic must contain at least one word")
     try:
@@ -76,7 +77,7 @@ def lookup_faq(
         raise ToolError(f"the FAQ database failed ({type(e).__name__})") from e
     log.info("lookup_faq(%r) -> %d result(s)", topic, len(results))
     if not results:
-        return LookupResult(results=[], note="nothing matched; don't guess, offer a human operator")
+        return LookupResult(results=[], note="nothing matched; don't guess, point to ჯიხვი's guides")
     return LookupResult(results=[FaqEntry(**r) for r in results])
 
 

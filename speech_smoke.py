@@ -17,7 +17,7 @@ from pathlib import Path
 from speech import (AUDIO_DIR, CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH, VOICES, SpeechError, peak_level, play,
                     record_seconds, synthesize, transcribe, wav_info)
 
-DEFAULT_REPLY = "eSIM-ის გასააქტიურებლად გახსენით ჯიხვის აპლიკაცია და დაასკანერეთ QR კოდი."
+DEFAULT_REPLY = "გერგეტის სამებამდე ასვლა-ჩამოსვლა დაახლოებით 6 კმ-ია, ხოლო საგანგებო შემთხვევაში დარეკეთ 112-ზე."
 
 
 def describe_wav(path: Path, for_stt: bool = False) -> None:
