@@ -66,6 +66,16 @@ query -> split, strip, lowercase, drop stopwords, dedupe, cap 5 -> per word: exa
 - **A precision problem it exposes:** "გაქვთ სატელევიზიო პაკეტები?" now always goes through lookup, which returned unrelated entries because it matched on "პაკეტ" (package) in other entries. The stem rule has no way to say "TV" is the important word. Fixes to try later: rank by rarity (BM25), require all rare words, or a minimum score, so "no good match" returns `[]` and the assistant offers an operator.
 - **Where to read:** LangChain's conversational RAG tutorial and "history-aware retriever" idea; search those terms (not opened for this note).
 
+## The vocabulary mismatch, query expansion and ties *(added 2026-10-08)* *(short note)*
+
+**Problem (step 3.3):** the customer said "move me to ჯიხვი L"; the model searched `L პაკეტი გადართვა`; the FAQ says `ტარიფი` for plans (`პაკეტი` = add-on), so `plan-change` was never returned (0/5 in the eval). Lexical search only matches shared words.
+
+- **The vocabulary problem** (Furnas, Landauer, Gomez, Dumais, "The vocabulary problem in human-system communication", CACM 30(11), 1987): two people pick the same word for a thing with probability under 0.20, and a system keyed to one designer's word fails 80-90% of the time in many cases (from the abstract as shown in search results). Their remedy, "unlimited aliasing", is many synonyms per entry. Here the LLM in `understand` is the aliasing layer, and it guessed wrong.
+- **Query replacement vs expansion.** Prompt v1 told the model to use the FAQ's terms, so it *replaced* the customer's words: `ტარიფები` became `ტარიფი`. v2 says keep the customer's words and *add* the FAQ term. Expansion keeps recall from the original words and adds the vocabulary bridge; replacement throws away signal. Another route that doesn't touch the LLM: add synonyms to the FAQ entry's `keywords` (document expansion), e.g. `პაკეტი`, `პლანი` on `plan-change`.
+- **Ties.** Our SQL is `ORDER BY score DESC, id LIMIT 3`. A one-word query scored every plan entry equally, so `id` order decided and `plans-overview` fell out of the top 3; the reply listed L and M but not S. A tie-break by id is arbitrary, not relevant. Better: a second sort key like "word found in topic", or a larger LIMIT for broad queries.
+- **BM25/IDF** would weigh `ტარიფი` low if it appears in many entries, but all plan entries contain it, so it would still tie among them; length normalization would favor shorter entries, not the overview. **Embeddings** would put "გადამიყვანეთ L-ზე" near "plan change" with no shared word, which is the standard fix for vocabulary mismatch, at the cost of explainability. **Hybrid** search combines both. Full story and tests: [error analysis note](2026-10-08-error-analysis-and-fixing-one-failure.md).
+- Source: <https://cacm.acm.org/magazines/1987/11/10035-the-vocabulary-problem-in-human-system-communication> was in search results as a mirror (<https://cacmb4.acm.org/magazines/1987/11/10035-the-vocabulary-problem-in-human-system-communication>); I did not open it. The summary above comes from the search result text.
+
 ## 7. Ways to learn it (choose later)
 
 | Option | Good for | Time |
