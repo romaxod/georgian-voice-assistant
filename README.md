@@ -1,6 +1,6 @@
 # ჯიხვი voice assistant (Georgian)
 
-A Georgian push-to-talk hiking guide. **ჯიხვი** (Jikhvi, named after the Caucasian tur, a mountain goat) is the assistant of a *fictional* service that recommends hikes in Georgia and answers the practical questions: how far, how long, when to go, how to get to the trailhead, permits, shepherd dogs, what to do in an emergency. You press Enter, ask out loud (Georgian, often with English words like "trail" or "camping" mixed in), and hear the answer. Every step is shown in the terminal: the transcript, the tool call, the reply and the time each stage took.
+A Georgian push-to-talk hiking guide. **ჯიხვი** (Jikhvi, named after the Caucasian tur, a mountain goat) is the assistant of a *fictional* service that recommends hikes in Georgia, knows its lakes and peaks (from Kazbek's guided ascent to lakes you can drive to), and answers the practical questions: how far, how long, when to go, how to get to the trailhead, permits, shepherd dogs, altitude sickness, what to do in an emergency. You press Enter, ask out loud (Georgian, often with English words like "trail" or "camping" mixed in), and hear the answer. Every step is shown in the terminal: the transcript, the tool call, the reply and the time each stage took.
 
 Until step 3.6 it was a customer-service assistant for a fictional mobile operator. Switching it to hiking changed the data, the prompts and the test set; the graph, the MCP server, the eval runner and the voice pipeline stayed the same. The [evaluation](#evaluation) has results from both versions.
 
@@ -10,8 +10,8 @@ It's a prototype I built in October 2026 to learn LangGraph, MCP, speech-to-text
 
 | What | Result |
 |---|---|
-| Hiking guide, text test set: 30 cases, 8 categories, each run 3×, checked by rules + an LLM judge | **87/90 (97%)**, 495/498 checks |
-| Hiking guide, safety cases ("call the rescuers for me", bookings, prompt injection, tool failures) | **24/24** |
+| Hiking guide with lakes and peaks: 44 cases, 8 categories, each run 3×, checked by rules + an LLM judge | **127/132 (96%)**, 750/759 checks |
+| Hiking guide, safety cases ("call the rescuers for me", "hire me a guide", bookings, prompt injection, tool failures) | **27/27** |
 | Mobile-operator version (before 3.6): 28 cases × 5 runs | **135/140 (96%)** after one measured fix (was 129/140) |
 | Its fixed failure ("move me to plan L" → wrongly handed off) | **0/5 → 5/5**, no regressions; 9/9 on unseen phrasings vs 6/9 without the fix |
 | Same questions spoken, mobile-operator version (5 recordings × 3 runs, 4 of 5 Georgian + English) | typed **12/12**, Azure STT **6/15**, ElevenLabs Scribe v2 + keyterms **9/15** |
@@ -55,7 +55,7 @@ flowchart LR
     stt -- transcript --> lg["LangGraph graph<br/>graph.py"]
     typed["Typed question"] --> lg
     lg <-- "lookup_faq<br/>(MCP, stdio)" --> mcp["MCP server<br/>mcp_server.py"]
-    mcp --> db[("SQLite FAQ<br/>34 entries")]
+    mcp --> db[("SQLite FAQ<br/>65 entries")]
     lg -- reply --> st["speech-text<br/>კმ → კილომეტრი, ₾ → ლარი"]
     st --> tts["TTS, streamed<br/>ElevenLabs (my cloned voice)<br/>fallback: Azure"]
     tts --> spk["Speaker"]
@@ -150,6 +150,25 @@ Turn latency median 1.87 s, p90 2.23 s; $0.14 for the 3 runs (`runs/eval_2026100
 
 Not redone yet: the voice check. Its recordings ask the mobile-operator questions, so it needs new recordings of hiking cases (`python voice_evals.py record` suggests five).
 
+### More lakes and peaks (step 3.7)
+
+The FAQ grew from 34 to 65 entries: 16 lakes (from Paravani, the largest, to Kelitsadi, the highest; a note on why ჯიხვი doesn't send anyone to Lake Ritsa in occupied Abkhazia) and 14 on peaks (Kazbek's route, days, gear and guided price; Shkhara, Ushba, Tetnuldi and other technical peaks; summits a hiker can reach, like Didi Abuli; altitude sickness; guides and permits), plus an overview of each, because the lookup returns only 3 entries and a broad question needs one entry that lists the options. Two research passes gave one cited number per fact; where sources disagreed and no source was clearly better (Bazaleti's depth: 7 m or 30 m), the number was left out. The test set grew to 43 cases, and two old cases changed because the new facts made them answerable (a guided Kazbek climb's price is now an ordinary question, not missing information).
+
+| Run | Cases | What changed before it |
+|---|---|---|
+| 1 | 115/129 (89%) | the new entries and cases |
+| 2 | 116/129 (90%) | the understand prompt's scope: "questions about hiking" → "hiking, Georgia's mountains and lakes" |
+| 3 | 124/129 (96%) | a test bug fixed, and "ყველაზე მაღალი" added to the peak entries' keywords |
+| 4 (kept) | **127/132 (96%)** | one case added from a real conversation, and a scope rule for occupied territories |
+
+**What the first run found.** "What's the highest mountain in Georgia?", "the largest lake?" and "how high is Kazbek?" were classified as off-topic, 8 of the 14 failures. The prompt from 3.6 defined the domain as hiking and off-topic as general knowledge, so geography questions looked like general knowledge. The content grew, so the domain definition had to grow with it.
+
+**What the second run found.** Two more problems, neither the model's. `ord-largest-lake` failed 3/3 with a correct reply: Georgian drops a vowel in the genitive (ფარავანი → ფარავნის), so the test's `reply_has: ფარავან` couldn't match "ფარავნის ტბაა". And "ყველაზე მაღალი მთა" ("the highest mountain") retrieved Kelitsadi, "საქართველოს ყველაზე მაღალი ტბა" ("Georgia's highest *lake*"), because the peak entries only used the other word for highest, "უმაღლესი". The same vocabulary-mismatch lesson as 3.3, now in the data instead of the prompt. The full suite was rerun after each change, since a retrieval change can move other cases.
+
+**What a real conversation found.** Chatting with the finished version, "how do I get to Lake Ritsa?" asked as the *third* message was classified off-topic and got "check the road and transport locally", with no word about occupied Abkhazia. As a first message it passed every time, so the test set couldn't see it. A new case (`multi-ritsa-after-kazbek`: a Kazbek question first, then Ritsa) reproduced it in 1 of 5 runs before any change. The fix is one sentence in the understand prompt: a place in occupied Abkhazia or South Ossetia is an FAQ question, because the FAQ says why ჯიხვი doesn't recommend going. After it, the remaining failure was the judge counting the FAQ's own legal rule ("foreigners may enter only from Zugdidi") as travel advice; that case's judge question now matches `ord-ritsa`'s.
+
+**Still failing:** `cs-camping-koruldi` 0/3 (the camping-rule retrieval problem, with one more lake entry competing now), `ord-lakes-overview` 1/3 (asked "which lakes?" instead of listing them; arguable), `ord-altitude-sickness` 1/3 (the keywords lost "headache", so the lookup missed the entry and the graph handed off honestly). Runs are in `runs/` (gitignored): `eval_20261009-004521.json`, `-005118.json`, `-005739.json`, `-010911.json`.
+
 ### Earlier: the mobile-operator version (steps 3.2–3.4)
 
 The next two sections were measured before 3.6, when ჯიხვი was a fictional mobile operator (the commits up to "3.5 README"). Those cases and recordings aren't in the current test set, but the method and the findings carry over.
@@ -235,10 +254,10 @@ Beyond the eval findings above, in build order:
 
 ## Limits
 
-- A fictional service with 34 hand-written FAQ entries. The trail facts are real, paraphrased from cited pages and checked on 2026-10-08, but prices, roads and trail conditions change, and sources disagree on some numbers, so it isn't a planning tool. No accounts, no bookings, and no tool that acts in the world (the only tool is a read-only lookup).
+- A fictional service with 65 hand-written FAQ entries. The trail facts are real, paraphrased from cited pages and checked on 2026-10-08, but prices, roads and trail conditions change, and sources disagree on some numbers, so it isn't a planning tool. No accounts, no bookings, and no tool that acts in the world (the only tool is a read-only lookup).
 - Keyword search over a tiny FAQ; it wouldn't scale as is.
 - Push-to-talk, not live duplex conversation. Voice tested only on WSL2 (Linux audio through PulseAudio).
-- Eval numbers come from small samples (30 cases × 3 runs; before 3.6, 28 cases × 5 runs and 5 recordings × 3 runs) from one speaker and one microphone. Where a difference isn't statistically significant, the README says so.
+- Eval numbers come from small samples (44 cases × 3 runs; before 3.6, 28 cases × 5 runs and 5 recordings × 3 runs) from one speaker and one microphone. Where a difference isn't statistically significant, the README says so.
 - Voice ratings are one listener's (mine).
 
 ## Repository map

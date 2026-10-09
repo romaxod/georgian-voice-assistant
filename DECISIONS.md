@@ -1578,3 +1578,147 @@ Tags: `provider` · `architecture` · `tooling` · `code` · `process` · `scope
 - **How:** `sed` over `graph.py` → [docs](docs/code/graph.py.md).
 - **How to explain it:** "A hiking guide has users, not customers, so the prompts say so."
 - **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · More ჯიხვი content on Georgian lakes and peaks, recorded as plan step 3.7 `[scope]`
+- **Decision:** Add many more lake entries (14–18 new lakes) and peak entries (Kazbek in depth, other famous peaks, summits reachable without climbing gear) to the FAQ. Treat this as a full plan step, 3.7, not just a data edit.
+- **Why:** Roman asked for more information, focused on Georgian lakes and on peaks such as Kazbegi. The new entries change retrieval, so old cases may break. Example: "how much is a guided Kazbek climb?" is a missing-info test today and becomes answerable. More lake entries can also push the general camping rule down for "can I camp at the Koruldi lakes?". So it needs new cases and a rerun. CLAUDE.md asks for off-plan work to be written down.
+- **Alternatives:** Adding the data without a plan step was implicitly rejected, because of the retrieval side effects.
+- **How:** `BUILD_PLAN.md` gets "3.7 More content: Georgian lakes and peaks" before Phase 4, plus a dated note at the bottom. Targets are `data/faq.json` and `data/eval_cases.yaml`. The step is done when each new entry has a source, the suite runs with per-category scores, and changes in old cases are explained.
+- **How to explain it:** Adding FAQ content isn't just data entry, because every new entry changes what the lookup returns for old questions. So it's a planned step with new test cases and a rerun.
+- **Decided by:** together
+
+### 2026-10-09 · Add two overview entries (lakes, peaks) because the FAQ lookup returns only the top 3 `[code]`
+- **Decision:** Besides the individual entries, add one "which lakes are there?" entry and one "which peaks can I climb?" entry.
+- **Why:** The FAQ search returns only the top 3 matches, so a broad question can't be answered from many individual entries. One entry that lists the options gives broad questions a good answer.
+- **Alternatives:** Raising the number of results returned was not discussed.
+- **How:** New entries in `data/faq.json`, listed under step 3.7 in `BUILD_PLAN.md`.
+- **How to explain it:** The lookup only returns three entries, so for "what lakes are there?" I wrote one entry that lists them.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · ჯიხვი won't recommend lakes in occupied Abkhazia, and gets one entry explaining why `[scope]`
+- **Decision:** Leave Ritsa and Amtkeli out of the recommended lakes. Add a single entry that explains, from official sources, why ჯიხვი doesn't recommend them.
+- **Why:** The lakes are in occupied Abkhazia, and people do ask about Ritsa, so the assistant should give an answer instead of staying silent.
+- **Alternatives:** Silently omitting them, or listing them as ordinary lakes. Neither was discussed beyond this.
+- **How:** One new entry in `data/faq.json` with an official-source URL. The research agents were told to cover other lakes.
+- **How to explain it:** Those lakes are in occupied territory, so the guide doesn't send people there. If someone asks, it says why and points to official sources.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · Kazbek is given as 5054 m in the FAQ, although sources disagree `[code]`
+- **Decision:** The `kazbek-climb` and `peaks-overview` entries state Kazbek (მყინვარწვერი) as 5054 m. The Betlemi (Meteo) hut is given as "about 3650 m".
+- **Why:** The research found 5054 m on en/ka Wikipedia and georgia.travel. Other pages give 5047 m and 5033 m, and a 2019 GPS figure of 5053.927 m is marked "citation needed". The research agent suggested 5054. The hut height ranges from 3650 to 3700 m across sources, and 3650 is the lowest figure listed.
+- **Alternatives:** 5047 m and 5033 m (from caucasus-trekking.com), not used because the better-known sources give 5054. A range for the hut: not stated whether it was considered.
+- **How:** `data/faq.json` (entries `kazbek-climb`, `peaks-overview`), each with its source URLs. The entries come from the generator script in the scratchpad, `make_faq.py`.
+- **How to explain it:** The sources disagree on Kazbek's height, so I used 5054 m, which Wikipedia and the Georgian tourism site both give, and I wrote "about" for the hut where the sources differ.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · The Tetnuldi entry says the summer lift status is unknown instead of guessing `[code]`
+- **Decision:** The Tetnuldi FAQ entry says plainly that it is not known whether the ski lifts run in summer.
+- **Why:** The only source saying they run in summer is an article from about 2019, and the research agent could not confirm current operation. The evals check exact claims, so an unverified one could produce a wrong answer.
+- **Alternatives:** Stating that the lifts run in summer (from the 2019 article), not used because it is unconfirmed. Leaving out the lift entirely: not discussed.
+- **How:** `data/faq.json`, the Tetnuldi entry (lift heights 3160 or 3165 m, which sources disagree on, are covered by the same research).
+- **How to explain it:** I only wrote what a source supports, so where I couldn't confirm the lift runs in summer, the assistant says so.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · `miss-kazbek-summit` becomes an ordinary case and the missing-info category gets a new question `[process]`
+- **Decision:** The test case `miss-kazbek-summit` ("how much is a guided Kazbek climb?") moves from missing-info to an ordinary answerable case. A new question that the FAQ really doesn't cover is added to the missing-info category.
+- **Why:** The new Kazbek entry (climb, cost and permit) makes the old question answerable, so keeping it as "missing info" would test the wrong behaviour. The missing-info category still needs real unanswerable questions.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml`, to be changed in step 3.7 and followed by a rerun of the suite. At the time of this turn the change was announced, not yet made.
+- **How to explain it:** Once the FAQ could answer the Kazbek price question, it stopped being a test of "I don't know", so I moved it and added a question the FAQ really can't answer.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · Overview entries get the keyword "ლაშქრობა" so they rank first `[code]`
+- **Decision:** Added "ლაშქრობა" (and "ლაშქრობები" for lakes) to the keyword strings of `lakes-overview` and `peaks-overview` in the FAQ generator, then rebuilt `data/faq.json`.
+- **Why:** The first test searches ("ტბები ლაშქრობა" and similar) did not put the overview entries first. After the change, `lakes-overview` was first for "ტბები ლაშქრობა", and `peaks-overview` was first for "მთაზე ასვლა ლაშქრობა" and for "საქართველოს უმაღლესი მთა".
+- **Alternatives:** none discussed.
+- **How:** The overview entries' keyword fields in the scratchpad `make_faq.py` generator, written out to `data/faq.json`. Checked with `python faq.py <query>` after `python faq.py --build`. `faq.py` → [docs](docs/code/faq.py.md)
+- **How to explain it:** The FAQ lookup returns only the top 3 entries, so the broad overview entries carry the words people actually say ("hike", "climb") and show up first.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · Speech rule for "km" after a range, and the IFMGA acronym spelled out in Georgian `[code]`
+- **Decision:** In `speech_text.py` the `KM` regex now also matches "2-მდე კმ", so a range read as "X-დან Y-მდე" ends in "კილომეტრი". In the FAQ text, "(IFMGA)" was replaced by plain Georgian wording: "მთის გიდების საერთაშორისო ფედერაციის წევრია".
+- **Why:** The spoken-form check turned "1.5-2 კმ" into "…2-მდე კმ", leaving "კმ" unexpanded. The Latin acronym was read out as "აიეფემჯიეი". After the fixes, "1.5-2 კმ" is spoken as "…2-მდე კილომეტრი", and no `IFMGA` remains in `data/faq.json`.
+- **Alternatives:** none discussed.
+- **How:** `KM` in `speech_text.py`, which runs after the `RANGE` rule. The answer text in `data/faq.json` was regenerated. `speech_text.py` → [docs](docs/code/speech_text.py.md)
+- **How to explain it:** The answers are spoken by a TTS voice, so every number, unit and acronym has to be written so that it is read correctly.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · New peak and lake names are added to the STT keyterms `[code]`
+- **Decision:** Added 23 new names to the keyterm list in `providers.py` (Kazbek, Shkhara, Ushba, Oreti, Paravani, Shaori and others). That brings the total to 50.
+- **Why:** The new FAQ entries contain place names that STT may mis-hear. A check found no local keyterm limit in the code. Claude recalled ElevenLabs Scribe allowing about 100 keyterms, which was not verified.
+- **Alternatives:** none discussed.
+- **How:** The keyterm list in `providers.py`, under the comment "3.7: peaks and lakes". `KEYTERMS` is built from the FAQ terms plus `DOMAIN_TERMS`. `providers.py` → [docs](docs/code/providers.py.md)
+- **How to explain it:** Giving the speech-to-text service the new place names as keyterms makes it more likely to recognise them.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · The false-action guard also catches "I hired a guide for you" `[code]`
+- **Decision:** Added the stems `დაგიქირავ`, `დავიქირავ` and `ვიქირავე` ("I hired") to the false-action pattern in `graph.py`.
+- **Why:** With Kazbek guide entries in the FAQ, a reply like "I hired you a guide" would claim an action the assistant cannot do. Four test phrases behaved as intended: "დაგიქირავე" and "დაგიქირავებთ" were flagged. "ვერ დაგიქირავებთ" ("I can't hire") and "თავად დაიქირავეთ" ("hire one yourself") were not.
+- **Alternatives:** none discussed.
+- **How:** The first-person action pattern in `graph.py`, checked with `graph.false_action_claim(...)`. `graph.py` → [docs](docs/code/graph.py.md)
+- **How to explain it:** The assistant can't hire anyone, so the guard blocks any claim that it did.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · `miss-tetnuldi` is replaced by a fishing-licence missing-info case `[process]`
+- **Decision:** In `data/eval_cases.yaml` the missing-info case `miss-tetnuldi` was replaced by `miss-fishing-license`. A `miss-shkhara-price` case was also added (the Kazbek-price replacement is already logged).
+- **Why:** The new Tetnuldi entry arguably answers a hike-distance question, so the old case no longer tests missing information. The rest of the case's text was cut off in the excerpt.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml`. Afterwards `python eval_cases.py` validated 43 cases and 47 turns. `run_evals.py --repeat 3` was started to re-measure.
+- **How to explain it:** A missing-info test only works if the FAQ really lacks the answer. When new entries cover a topic, I swap in a question they still don't cover.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · Widen the `faq` intent in the router prompt to cover Georgia's mountains and lakes `[code]`
+- **Decision:** In the intent-classification prompt, `faq` now covers "hiking in Georgia, Georgia's mountains and lakes, or ჯიხვი", including peaks and lakes (heights, sizes, which is highest or largest, climbing them). `other` is narrowed to "anything not about hiking, mountains or lakes".
+- **Why:** The first 3.7 eval run (3 repeats) had failures in `ordinary` (35/42) and a few other categories. The turn calls the change a "scope fix", so the new lake and peak questions were presumably being routed away from `faq`. The exact failing cases are not shown in the excerpt.
+- **Alternatives:** none discussed.
+- **How:** `graph.py` (the intent prompt, around lines 161–165) → [docs](docs/code/graph.py.md). The change was applied with an exact-string replace that asserts each target occurs once. The suite was then rerun with `python run_evals.py --repeat 3`.
+- **How to explain it:** The router only treated hiking as in scope, so I told it that Georgia's mountains and lakes count too, and then checked that Python and wine questions still stay off-topic.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · "ყველაზე მაღალი" is added to the peak entries' search keywords `[code]`
+- **Decision:** The keyword string of the peaks overview and the Shkhara entry now includes "ყველაზე მაღალი" next to "უმაღლესი". The change was made in the generator script and `data/faq.json` was rebuilt.
+- **Why:** In the eval run, "the highest mountain" and "the highest lake" questions found the highest lake instead of a peak, because the peak entries only used "უმაღლესი" for "highest". After the change, `faq.py` returns `peaks-overview` and `shkhara` first for "საქართველოს ყველაზე მაღალი მთა".
+- **Alternatives:** none discussed.
+- **How:** `data/faq.json` → [docs](docs/code/data/faq.json.md). Rebuilt with `python faq.py --build`, 65 entries.
+- **How to explain it:** People say "ყველაზე მაღალი" in everyday speech, not "უმაღლესი", so the peak entries needed that phrase as a keyword to be found.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · The Georgian-genitive test failure is fixed in the test, not the assistant `[code]`
+- **Decision:** In `ord-largest-lake`, the check `reply_has: ["ფარავან"]` became `["ფარავან|ფარავნ"]`, with a comment about the dropped vowel.
+- **Why:** The reply was correct ("ფარავნის ტბა"). Georgian drops the vowel in the genitive, so the stem "ფარავან" doesn't appear in it. The failure was a bug in the test.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md).
+- **How to explain it:** When a correct answer failed, I fixed the check instead of the assistant, because Georgian inflection changes word stems.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · A real conversation becomes a regression case, `multi-ritsa-after-kazbek` `[process]`
+- **Decision:** Added a multi_turn case: first "can I climb Kazbek?", then "how do I get to Lake Ritsa?". It expects an answer that uses the `occupied-lakes` fact and mentions "ოკუპ" (occupied), and a judge question checks that no route is given. The case was added and measured before the fix.
+- **Why:** In a hand-run conversation, Ritsa asked as the third message was classified off-topic and got "check the road locally", without saying it is in occupied Abkhazia. The same question as a first message passed 3/3 (`ord-ritsa`). Reproduction before the fix: 4/5 on multi_turn.
+- **Alternatives:** none discussed.
+- **How:** `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md). Run with `python run_evals.py --only multi-ritsa-after-kazbek,ord-ritsa --repeat 5`.
+- **How to explain it:** The scripted tests missed a gap that a real chat found, so I turned that chat into a test and measured the failure before fixing it.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · The router prompt sends occupied-territory places to the FAQ `[code]`
+- **Decision:** One sentence was added to the router prompt in `graph.py`: a place in occupied Abkhazia or South Ossetia (Lake Ritsa, for example) is `faq`, because the FAQ says why ჯიხვი doesn't recommend going.
+- **Why:** The multi-turn Ritsa case was classified off-topic. After the sentence, the intent is `faq` with topic "რიწის ტბა აფხაზეთი". The Ritsa cases ran 4/5 before and after, but the check detail went from 37/40 to 39/40. The single remaining failure was a judge question that was too strict.
+- **Alternatives:** none discussed.
+- **How:** `graph.py` → [docs](docs/code/graph.py.md), intent-routing prompt.
+- **How to explain it:** The router has to know that places in occupied territories are FAQ questions, so the answer says why we don't recommend going and not "check locally".
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · The Ritsa judge question allows stating the legal entry rule `[code]`
+- **Decision:** The judge question for `multi-ritsa-after-kazbek` was reworded: it now asks for no directions or route, and says that stating the FAQ's legal rule (foreigners may enter only from the Zugdidi side; entering from Russia is a crime) passes.
+- **Why:** The judge failed a reply that correctly said Ritsa is in occupied Abkhazia, because it also mentioned the Zugdidi-side rule and the judge counted that as travel information. The rule comes from the FAQ and is not a route.
+- **Alternatives:** none discussed (the assistant's reply was left as it was).
+- **How:** `data/eval_cases.yaml` → [docs](docs/code/data/eval_cases.yaml.md). The final full run was 127/132 (96%), and multi_turn was 15/15.
+- **How to explain it:** The judge question had to match what the FAQ says on purpose: the legal rule is allowed, a route is not.
+- **Decided by:** Claude (unconfirmed)
+
+### 2026-10-09 · Three known failures are left unfixed and listed in the README `[scope]`
+- **Decision:** After run 4, `cs-camping-koruldi` (0/3), `ord-lakes-overview` (1/3) and an altitude-sickness symptom question (1/3) are left failing and written under "Still failing" in the README. Run 4 is the kept result.
+- **Why:** Not stated beyond the notes: camping-rule retrieval loses to the lake entries, the overview case is "arguable", and the symptom lookup missed the entry.
+- **Alternatives:** none discussed.
+- **How:** `README.md` → [docs](docs/code/README.md), section "More lakes and peaks (step 3.7)", and `BUILD_PLAN.md` step 3.7 marked done.
+- **How to explain it:** I report the failing cases openly instead of tuning until they pass, because the README is meant to show real results.
+- **Decided by:** Claude (unconfirmed)

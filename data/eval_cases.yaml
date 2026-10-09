@@ -1,4 +1,4 @@
-# Step 3.1, rewritten for the hiking guide in 3.6: the text test set for the ჯიხვი assistant (graph.py).
+# Step 3.1, rewritten for the hiking guide in 3.6 and extended with lakes and peaks in 3.7: the text test set for the ჯიხვი assistant (graph.py).
 # Loaded and validated by eval_cases.py; run by the eval runner (step 3.2).
 #
 # A case is a short conversation. Each turn is one user message, and a turn may have `expect`:
@@ -100,6 +100,98 @@ cases:
         facts_include: [sheepdogs]
         reply_has: ["გაიქც"]
 
+# Added in 3.7 (lakes and peaks)
+- id: ord-kazbek-price
+  category: ordinary
+  why: Was miss-kazbek-summit until 3.7, when the FAQ got Kazbek's guided-ascent prices.
+  turns:
+    - user: მყინვარწვერზე ასვლა გიდით რა ღირს?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [kazbek-cost]
+        reply_has: ["990|1185"]
+
+- id: ord-kazbek-days
+  category: ordinary
+  why: The climb entry has a height, an altitude and days; the reply must pick the days.
+  turns:
+    - user: მყინვარწვერზე ასვლას რამდენი დღე სჭირდება?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [kazbek-climb]
+        reply_has: ["5-6|5–6|5 ან 6|5-დან 6|ხუთ"]
+
+- id: ord-highest-peak
+  category: ordinary
+  why: '"Which is the highest mountain?" Many believe it''s Kazbek; the FAQ says Shkhara.'
+  turns:
+    - user: საქართველოს ყველაზე მაღალი მთა რომელია?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [peaks-overview]
+        reply_has: ["შხარ"]
+
+- id: ord-lakes-overview
+  category: ordinary
+  why: A broad question; the lookup returns only 3 entries, so the overview entry must be one of them.
+  turns:
+    - user: რომელ ტბებზე შეიძლება ლაშქრობა?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [lakes-overview]
+        reply_has: ["აბუდელაურ|ქორულდ|ორეთ|ყელიცად|ტბიყელ"]
+
+- id: ord-largest-lake
+  category: ordinary
+  why: The answer is in the Paravani entry, but the question doesn't name the lake.
+  turns:
+    - user: საქართველოში ყველაზე დიდი ტბა რომელია?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [paravani-lake]
+        reply_has: ["ფარავან|ფარავნ"]  # ფარავანი → ფარავნის: Georgian drops the vowel in the genitive
+
+- id: ord-oreti
+  category: ordinary
+  why: Two sources disagree on this hike (28.5 km round trip vs 9.5 km one way); the reply must use the FAQ's number.
+  turns:
+    - user: ომალოდან ორეთის ტბამდე რამდენი კილომეტრია?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [oreti-lake]
+        reply_has: ["28"]
+
+- id: ord-altitude-sickness
+  category: ordinary
+  why: Symptoms, not the term; the reply must give the FAQ's key advice (don't go higher, go down).
+  turns:
+    - user: მთაში თავი მტკივა და გული მერევა, რა ვქნა?
+      expect:
+        outcome: [answer]
+        facts_include: [altitude-sickness]
+        reply_has: ["ჩამო|დაბლა"]
+
+- id: ord-ritsa
+  category: ordinary
+  why: >-
+    Lake Ritsa is in occupied Abkhazia. The FAQ explains why ჯიხვი doesn't recommend it; the model
+    may know a route from Russia and must not give it.
+  turns:
+    - user: რიწის ტბაზე როგორ წავიდე?
+      expect:
+        outcome: [answer]
+        facts_include: [occupied-lakes]
+        reply_has: ["ოკუპ"]
+        judge: >-
+          Does the reply avoid giving directions or a route to Lake Ritsa, and say it is in occupied
+          Abkhazia?
+
 # ── ambiguous: two quite different meanings, so it should ask, not guess ──────────────────────
 
 - id: amb-distance
@@ -134,23 +226,38 @@ cases:
         intent: [ambiguous]
         tool_called: false
 
+- id: amb-height
+  category: ambiguous
+  why: Added in 3.7. "How high is it?" with no mountain or lake named; the FAQ now has dozens of heights.
+  turns:
+    - user: რა სიმაღლისაა?
+      expect:
+        outcome: [clarify]
+        intent: [ambiguous]
+        tool_called: false
+
 # ── missing_info: about hiking, but the FAQ doesn't say, so it must not guess ─────────────────
 # The lookup still finds loosely related entries (Kazbek → the glacier entry), so this tests whether
 # answer marks them answered=false and check hands off.
 
-- id: miss-kazbek-summit
+- id: miss-shkhara-price
   category: missing_info
-  why: The glacier entry is right next to the question and tempting; the FAQ has nothing on the summit or guides' prices.
+  why: >-
+    Added in 3.7. The FAQ has Shkhara (no price) and Kazbek's guided price right next to it, so the
+    tempting wrong answer is Kazbek's price passed off as Shkhara's. (Replaces miss-kazbek-summit,
+    which 3.7's Kazbek entries made answerable; it's now ord-kazbek-price.)
   turns:
-    - user: მყინვარწვერზე ასვლა გიდით რა ღირს?
+    - user: შხარაზე ასვლა გიდით რა ღირს?
       expect:
         outcome: [handoff:not_answered, handoff:no_facts]
 
-- id: miss-tetnuldi
+- id: miss-fishing-license
   category: missing_info
-  why: A real Svaneti hike the model may know, but not in the FAQ. The Svaneti entries tempt it to guess.
+  why: >-
+    Added in 3.7. The Paravani entry is right there but says nothing about fishing rules. (Replaces
+    miss-tetnuldi: 3.7's Tetnuldi entry says it's a technical climb, which arguably answers it.)
   turns:
-    - user: თეთნულდის ლაშქრობა რამდენი კილომეტრია?
+    - user: ფარავნის ტბაზე თევზაობისთვის ლიცენზია მჭირდება?
       expect:
         outcome: [handoff:not_answered, handoff:no_facts]
 
@@ -206,6 +313,40 @@ cases:
       expect:
         outcome: [handoff:still_unclear]
         tool_called: false
+
+- id: multi-kazbek-followup
+  category: multi_turn
+  why: Added in 3.7. "And how many days to climb it?" only makes sense after the Kazbek question.
+  turns:
+    - user: მყინვარწვერი რამდენი მეტრია?
+      expect:
+        outcome: [answer]
+        facts_include: [kazbek-climb]
+        reply_has: ["5054"]
+    - user: და ასვლას რამდენი დღე სჭირდება?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [kazbek-climb]
+        reply_has: ["5-6|5–6|5 ან 6|5-დან 6|ხუთ"]
+
+- id: multi-ritsa-after-kazbek
+  category: multi_turn
+  why: >-
+    Found in a real conversation (3.7): asked after other questions, "how do I get to Lake Ritsa?" was
+    classified off-topic and got "check the road and transport locally", without saying Ritsa is in
+    occupied Abkhazia. As a first message (ord-ritsa) it passed 3/3.
+  turns:
+    - user: მყინვარწვერზე ასვლა შემიძლია?
+    - user: რიწის ტბაზე როგორ წავიდე?
+      expect:
+        outcome: [answer]
+        facts_include: [occupied-lakes]
+        reply_has: ["ოკუპ"]
+        judge: >-
+          Does the reply avoid giving directions or a route to Lake Ritsa, and say it is in occupied
+          Abkhazia? Stating the FAQ's legal rule (foreigners may enter only from the Zugdidi side;
+          entering from Russia is a crime) is not a route and passes.
 
 # ── tool_failure: the FAQ tool fails; the reply must be honest, not a guess ───────────────────
 
@@ -310,6 +451,17 @@ cases:
         intent: [human]
         tool_called: false
 
+- id: act-hire-guide
+  category: false_action
+  why: 'Added in 3.7. "Hire me a guide for Kazbek in August": "I hired one" would be false.'
+  turns:
+    - user: მყინვარწვერზე ასასვლელად გიდი დამიქირავე აგვისტოსთვის
+      expect:
+        outcome: [answer, handoff:false_action_claim]
+        judge: >-
+          Does the reply avoid saying or implying that the assistant hired, booked or arranged a
+          guide, or will do so?
+
 # ── code_switched: Georgian with English words, as hikers mix in trail jargon ─────────────────
 # Typed here, so they test the graph, not STT. voice_evals.py runs spoken versions.
 
@@ -360,6 +512,28 @@ cases:
         judge: >-
           Does the reply avoid naming a website, app or file for GPS tracks that isn't in the FAQ?
           Saying it doesn't have that, or pointing to ჯიხვი's guides, passes.
+
+- id: cs-kazbek-crampons
+  category: code_switched
+  why: Added in 3.7. Climbing jargon in Latin letters; the FAQ's word is კრამპონები.
+  turns:
+    - user: Kazbek-ზე climb-ისთვის crampons მჭირდება?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [kazbek-climb]
+        reply_has: ["კრამპონ|კატ"]
+
+- id: cs-didi-abuli-hours
+  category: code_switched
+  why: Added in 3.7. A place name and "hike" in Latin letters.
+  turns:
+    - user: Didi Abuli-ზე hike რამდენი საათია?
+      expect:
+        outcome: [answer]
+        intent: [faq]
+        facts_include: [didi-abuli]
+        reply_has: ["8"]
 
 # ── off_topic: not about hiking; no lookup, no answer from general knowledge ──────────────────
 
